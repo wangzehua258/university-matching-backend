@@ -4,23 +4,23 @@ from datetime import datetime
 
 class ParentEvaluationInput(BaseModel):
     grade: str = Field(..., description="年级")
-    gpa: float = Field(..., description="GPA")
-    sat: Optional[int] = Field(None, description="SAT分数")
-    act: Optional[int] = Field(None, description="ACT分数")
-    toefl: Optional[int] = Field(None, description="托福分数")
+    gpa_range: str = Field(..., description="GPA范围")
+    sat_score: Optional[int] = Field(None, description="SAT分数")
     activities: List[str] = Field(..., description="活动经历")
+    interest_fields: List[str] = Field(..., description="兴趣方向")
     target_country: str = Field(..., description="目标国家")
-    interest: List[str] = Field(..., description="兴趣方向")
-    family_budget: str = Field(..., description="家庭预算")
+    school_type_preference: str = Field(..., description="学校类型偏好")
+    reputation_important: bool = Field(..., description="是否重视学校声誉")
+    budget: str = Field(..., description="预算范围")
     family_expectation: str = Field(..., description="家长期望")
-    internship_importance: bool = Field(..., description="是否重视实习机会")
+    internship_important: bool = Field(..., description="是否重视实习机会")
 
 class ParentEvaluationCreate(BaseModel):
     user_id: str = Field(..., description="用户ID")
     input: ParentEvaluationInput
 
 class ParentEvaluation(BaseModel):
-    id: str = Field(default="", alias="_id")
+    id: Optional[str] = Field(None, alias="_id")
     user_id: str
     input: ParentEvaluationInput
     recommended_schools: List[str] = Field(default_factory=list)
