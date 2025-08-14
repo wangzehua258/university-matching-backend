@@ -13,6 +13,12 @@ class University(BaseModel):
     strengths: List[str] = Field(..., description="优势专业")
     gpt_summary: str = Field(..., description="GPT生成的描述", alias="gptSummary")
     logo_url: Optional[str] = Field(None, description="Logo URL", alias="logoUrl")
+    
+    # Additional fields that might be used
+    location: Optional[str] = Field(None, description="位置描述")
+    personality_types: Optional[List[str]] = Field(None, description="适合的人格类型")
+    school_size: Optional[str] = Field(None, description="学校规模", alias="schoolSize")
+    description: Optional[str] = Field(None, description="描述")
 
     class Config:
         populate_by_name = True
@@ -29,4 +35,8 @@ class UniversityResponse(BaseModel):
     type: str
     strengths: List[str]
     gpt_summary: str
-    logo_url: Optional[str] = None 
+    logo_url: Optional[str] = None
+    location: Optional[str] = None
+    personality_types: Optional[List[str]] = None
+    school_size: Optional[str] = None
+    description: Optional[str] = None 
