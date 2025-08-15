@@ -245,14 +245,14 @@ def classify_applications(recommended_schools: List[Dict[str, Any]]) -> Tuple[Di
     
     # 1. 优先选择支持 Early Decision 的学校作为 ED 建议
     for school in recommended_schools:
-        if school.get("supports_ed", False):
+        if school.get("supports_ed", True):
             ed_suggestion = school
             break
     
     # 2. 选择支持 Early Action 的前两所学校作为 EA 建议
     ea_count = 0
     for school in recommended_schools:
-        if school.get("supports_ea", False) and ea_count < 2:
+        if school.get("supports_ea", True) and ea_count < 2:
             # 避免重复推荐ED学校
             if ed_suggestion is None or school["id"] != ed_suggestion["id"]:
                 ea_suggestions.append(school)
