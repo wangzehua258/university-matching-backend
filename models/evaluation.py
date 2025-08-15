@@ -14,13 +14,14 @@ class ParentEvaluationInput(BaseModel):
     budget: str = Field(..., description="预算范围")
     family_expectation: str = Field(..., description="家长期望")
     internship_important: bool = Field(..., description="是否重视实习机会")
+    region_preference: Optional[str] = Field(None, description="地理偏好（如：California、东海岸等）")
 
 class ParentEvaluationCreate(BaseModel):
     user_id: str = Field(..., description="用户ID")
     input: ParentEvaluationInput
 
 class ParentEvaluation(BaseModel):
-    id: Optional[str] = Field(None, alias="_id")
+    id: Optional[str] = Field(None, alias="_id", exclude=True)  # Exclude from dict by default
     user_id: str
     input: ParentEvaluationInput
     recommended_schools: List[str] = Field(default_factory=list)

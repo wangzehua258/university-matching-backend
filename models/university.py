@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 
 class University(BaseModel):
-    id: str = Field(default="", alias="_id")
+    id: Optional[str] = Field(None, alias="_id", exclude=True)  # Exclude from dict by default
     name: str = Field(..., description="大学名称")
     country: str = Field(..., description="国家")
     state: str = Field(..., description="州/省")
@@ -19,6 +19,27 @@ class University(BaseModel):
     personality_types: Optional[List[str]] = Field(None, description="适合的人格类型")
     school_size: Optional[str] = Field(None, description="学校规模", alias="schoolSize")
     description: Optional[str] = Field(None, description="描述")
+    
+    # Application round support
+    supports_ed: Optional[bool] = Field(False, description="是否支持Early Decision", alias="has_ed")
+    supports_ea: Optional[bool] = Field(False, description="是否支持Early Action", alias="has_ea")
+    supports_rd: Optional[bool] = Field(True, description="是否支持Regular Decision", alias="has_rd")
+    
+    # Enhanced internship support
+    internship_support_score: Optional[float] = Field(0.0, description="实习项目支持程度(0-10)")
+    
+    # Application details
+    acceptance_rate: Optional[float] = Field(None, description="录取率", alias="acceptanceRate")
+    sat_range: Optional[str] = Field(None, description="SAT分数范围", alias="satRange")
+    act_range: Optional[str] = Field(None, description="ACT分数范围", alias="actRange")
+    gpa_range: Optional[str] = Field(None, description="GPA范围", alias="gpaRange")
+    application_deadline: Optional[str] = Field(None, description="申请截止日期", alias="applicationDeadline")
+    website: Optional[str] = Field(None, description="官网")
+    
+    # Program features
+    has_internship_program: Optional[bool] = Field(False, description="是否有实习项目")
+    has_research_program: Optional[bool] = Field(False, description="是否有研究项目")
+    tags: Optional[List[str]] = Field(default_factory=list, description="学校标签和资源支持类型")
 
     class Config:
         populate_by_name = True
@@ -39,4 +60,25 @@ class UniversityResponse(BaseModel):
     location: Optional[str] = None
     personality_types: Optional[List[str]] = None
     school_size: Optional[str] = None
-    description: Optional[str] = None 
+    description: Optional[str] = None
+    
+    # Application round support
+    supports_ed: Optional[bool] = None
+    supports_ea: Optional[bool] = None
+    supports_rd: Optional[bool] = None
+    
+    # Enhanced internship support
+    internship_support_score: Optional[float] = None
+    
+    # Application details
+    acceptance_rate: Optional[float] = None
+    sat_range: Optional[str] = None
+    act_range: Optional[str] = None
+    gpa_range: Optional[str] = None
+    application_deadline: Optional[str] = None
+    website: Optional[str] = None
+    
+    # Program features
+    has_internship_program: Optional[bool] = None
+    has_research_program: Optional[bool] = None
+    tags: Optional[List[str]] = None 

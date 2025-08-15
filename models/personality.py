@@ -10,7 +10,7 @@ class StudentTestCreate(BaseModel):
     gpt_summary: str = Field(..., description="GPT生成的人格匹配解释")
 
 class StudentTest(BaseModel):
-    id: str = Field(default="", alias="_id")
+    id: Optional[str] = Field(None, alias="_id", exclude=True)  # Exclude from dict by default
     user_id: str
     answers: List[int]
     personality_type: str

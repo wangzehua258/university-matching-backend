@@ -45,7 +45,9 @@ async def create_parent_evaluation(eval_data: ParentEvaluationCreate):
             gpt_summary=gpt_summary
         )
         
-        result = await db.parent_evaluations.insert_one(evaluation.dict(by_alias=True))
+        # Convert to dict without the id field to avoid _id: null issue
+        evaluation_dict = evaluation.dict(by_alias=True, exclude={'id'})
+        result = await db.parent_evaluations.insert_one(evaluation_dict)
         evaluation.id = result.inserted_id
         print(f"评估记录已保存，ID: {evaluation.id}")
         
@@ -58,15 +60,15 @@ async def create_parent_evaluation(eval_data: ParentEvaluationCreate):
                 "country": school["country"],
                 "rank": school["rank"],
                 "tuition": school["tuition"],
-                "intl_rate": school.get("intlRate", 0),
+                "intlRate": school.get("intlRate", 0),  # Fixed field name
                 "type": school["type"],
                 "schoolSize": school.get("schoolSize", "medium"),
                 "strengths": school["strengths"],
                 "tags": school.get("tags", []),
                 "has_internship_program": school.get("has_internship_program", False),
                 "has_research_program": school.get("has_research_program", False),
-                "gpt_summary": school.get("gptSummary", ""),
-                "logoUrl": school.get("logoUrl", ""),
+                "gptSummary": school.get("gptSummary", ""),  # Fixed field name
+                "logoUrl": school.get("logoUrl", ""),  # Fixed field name
                 "acceptanceRate": school.get("acceptanceRate", 0),
                 "satRange": school.get("satRange", ""),
                 "actRange": school.get("actRange", ""),
@@ -133,15 +135,15 @@ async def get_parent_evaluation(eval_id: str):
             "country": school["country"],
             "rank": school["rank"],
             "tuition": school["tuition"],
-            "intl_rate": school.get("intlRate", 0),
+            "intlRate": school.get("intlRate", 0),  # Fixed field name
             "type": school["type"],
             "schoolSize": school.get("schoolSize", "medium"),
             "strengths": school["strengths"],
             "tags": school.get("tags", []),
             "has_internship_program": school.get("has_internship_program", False),
             "has_research_program": school.get("has_research_program", False),
-            "gpt_summary": school.get("gptSummary", ""),
-            "logoUrl": school.get("logoUrl", ""),
+            "gptSummary": school.get("gptSummary", ""),  # Fixed field name
+            "logoUrl": school.get("logoUrl", ""),  # Fixed field name
             "acceptanceRate": school.get("acceptanceRate", 0),
             "satRange": school.get("satRange", ""),
             "actRange": school.get("actRange", ""),
@@ -150,14 +152,18 @@ async def get_parent_evaluation(eval_id: str):
             "website": school.get("website", "")
         })
     
-    # 分类申请策略
+    # 分类申请策略 - 使用字典访问而不是属性访问
     ed_suggestion, ea_suggestions, rd_suggestions = classify_applications(recommended_schools)
     
-    # 生成学生画像
-    student_profile = generate_student_profile(evaluation["input"])
+    # 将字典数据转换回Pydantic模型以便使用
+    from models.evaluation import ParentEvaluationInput
+    input_model = ParentEvaluationInput(**evaluation["input"])
     
-    # 生成申请策略
-    strategy = generate_application_strategy(evaluation["input"], len(recommended_schools))
+    # 生成学生画像 - 使用Pydantic模型
+    student_profile = generate_student_profile(input_model)
+    
+    # 生成申请策略 - 使用Pydantic模型
+    strategy = generate_application_strategy(input_model, len(recommended_schools))
     
     return {
         "id": str(evaluation["_id"]),
@@ -168,7 +174,7 @@ async def get_parent_evaluation(eval_id: str):
         "eaSuggestions": ea_suggestions,
         "rdSuggestions": rd_suggestions,
         "strategy": strategy,
-        "gptSummary": evaluation["gpt_summary"],
+        "gptSummary": evaluation["gpt_summary"],  # Keep as is since it's from DB
         "created_at": evaluation["created_at"]
     }
 
@@ -208,7 +214,9 @@ async def create_student_test(test_data: StudentTestCreate):
         gpt_summary=test_data.gpt_summary
     )
     
-    result = await db.student_personality_tests.insert_one(test.dict(by_alias=True))
+    # Convert to dict without the id field to avoid _id: null issue
+    test_dict = test.dict(by_alias=True, exclude={'id'})
+    result = await db.student_personality_tests.insert_one(test_dict)
     test.id = result.inserted_id
     
     return StudentTestResponse(

@@ -31,7 +31,7 @@ def create_indexes(db):
     # 用户集合索引
     db.users.create_index("created_at")
     
-    # 大学集合索引
+    # 大学集合索引 - 更新以支持新字段
     db.universities.create_index("name")
     db.universities.create_index("country")
     db.universities.create_index("rank")
@@ -41,6 +41,16 @@ def create_indexes(db):
     db.universities.create_index("type")
     db.universities.create_index("schoolSize")
     db.universities.create_index("tags")
+    
+    # 新增字段索引
+    db.universities.create_index("supports_ed")
+    db.universities.create_index("supports_ea")
+    db.universities.create_index("supports_rd")
+    db.universities.create_index("internship_support_score")
+    db.universities.create_index("acceptanceRate")
+    db.universities.create_index("intlRate")
+    db.universities.create_index("state")
+    db.universities.create_index("personality_types")
     
     # 评估结果索引
     db.parent_evaluations.create_index("user_id")
@@ -97,7 +107,7 @@ def import_universities_from_csv(db, csv_file_path):
             print("没有找到有效的大学数据")
 
 def import_sample_data(db):
-    """导入示例数据（如果没有CSV文件）"""
+    """导入示例大学数据（如果没有CSV文件）"""
     print("导入示例大学数据...")
     
     # 清空现有数据
@@ -114,7 +124,7 @@ def import_sample_data(db):
             "type": "private",
             "schoolSize": "large",
             "strengths": ["business", "law", "medicine", "computer science"],
-            "tags": ["undergrad_research", "academic_competitions", "intl_employment_friendly"],
+            "tags": ["undergrad_research", "academic_competitions", "intl_employment_friendly", "student_government_support", "career_center_support"],
             "has_internship_program": True,
             "has_research_program": True,
             "gptSummary": "哈佛大学是世界顶尖的私立研究型大学，以其卓越的学术声誉和丰富的资源著称。",
@@ -124,7 +134,12 @@ def import_sample_data(db):
             "actRange": "33-36",
             "gpaRange": "3.9-4.0",
             "applicationDeadline": "2024-01-01",
-            "website": "https://www.harvard.edu"
+            "website": "https://www.harvard.edu",
+            "supports_ed": True,
+            "supports_ea": False,
+            "supports_rd": True,
+            "internship_support_score": 9.5,
+            "personality_types": ["学术明星型", "全能型", "探究型"]
         },
         {
             "name": "Stanford University",
@@ -136,7 +151,7 @@ def import_sample_data(db):
             "type": "private",
             "schoolSize": "large",
             "strengths": ["computer science", "engineering", "business", "artificial intelligence"],
-            "tags": ["entrepreneurship_friendly", "undergrad_research", "intl_employment_friendly"],
+            "tags": ["entrepreneurship_friendly", "undergrad_research", "intl_employment_friendly", "career_center_support", "student_club_support"],
             "has_internship_program": True,
             "has_research_program": True,
             "gptSummary": "斯坦福大学在科技创新和创业方面享有盛誉，位于硅谷中心。",
@@ -146,7 +161,12 @@ def import_sample_data(db):
             "actRange": "32-35",
             "gpaRange": "3.8-4.0",
             "applicationDeadline": "2024-01-02",
-            "website": "https://www.stanford.edu"
+            "website": "https://www.stanford.edu",
+            "supports_ed": False,
+            "supports_ea": True,
+            "supports_rd": True,
+            "internship_support_score": 9.8,
+            "personality_types": ["实践型", "探究型", "全能型"]
         },
         {
             "name": "MIT",
@@ -158,7 +178,7 @@ def import_sample_data(db):
             "type": "private",
             "schoolSize": "medium",
             "strengths": ["engineering", "computer science", "physics", "artificial intelligence"],
-            "tags": ["undergrad_research", "academic_competitions", "intl_employment_friendly"],
+            "tags": ["undergrad_research", "academic_competitions", "intl_employment_friendly", "career_center_support"],
             "has_internship_program": True,
             "has_research_program": True,
             "gptSummary": "麻省理工学院在工程和科学领域世界领先，注重创新和实用研究。",
@@ -168,7 +188,12 @@ def import_sample_data(db):
             "actRange": "34-36",
             "gpaRange": "3.9-4.0",
             "applicationDeadline": "2024-01-01",
-            "website": "https://www.mit.edu"
+            "website": "https://www.mit.edu",
+            "supports_ed": False,
+            "supports_ea": True,
+            "supports_rd": True,
+            "internship_support_score": 9.2,
+            "personality_types": ["学术明星型", "探究型", "实践型"]
         },
         {
             "name": "University of California, Berkeley",
@@ -180,7 +205,7 @@ def import_sample_data(db):
             "type": "public",
             "schoolSize": "large",
             "strengths": ["computer science", "engineering", "business", "artificial intelligence"],
-            "tags": ["undergrad_research", "entrepreneurship_friendly", "intl_employment_friendly"],
+            "tags": ["undergrad_research", "entrepreneurship_friendly", "intl_employment_friendly", "career_center_support", "community_service_opportunities"],
             "has_internship_program": True,
             "has_research_program": True,
             "gptSummary": "加州大学伯克利分校在计算机科学和工程领域享有盛誉，位于科技创新的前沿。",
@@ -190,7 +215,12 @@ def import_sample_data(db):
             "actRange": "29-35",
             "gpaRange": "3.7-4.0",
             "applicationDeadline": "2024-11-30",
-            "website": "https://www.berkeley.edu"
+            "website": "https://www.berkeley.edu",
+            "supports_ed": False,
+            "supports_ea": True,
+            "supports_rd": True,
+            "internship_support_score": 8.5,
+            "personality_types": ["实践型", "探索型", "全能型"]
         },
         {
             "name": "Carnegie Mellon University",
@@ -202,7 +232,7 @@ def import_sample_data(db):
             "type": "private",
             "schoolSize": "medium",
             "strengths": ["computer science", "engineering", "artificial intelligence", "robotics"],
-            "tags": ["undergrad_research", "academic_competitions", "intl_employment_friendly"],
+            "tags": ["undergrad_research", "academic_competitions", "intl_employment_friendly", "career_center_support", "entrepreneurship_friendly"],
             "has_internship_program": True,
             "has_research_program": True,
             "gptSummary": "卡内基梅隆大学在计算机科学和人工智能领域世界领先，特别在机器人技术方面有独特优势。",
@@ -212,7 +242,12 @@ def import_sample_data(db):
             "actRange": "33-35",
             "gpaRange": "3.8-4.0",
             "applicationDeadline": "2024-01-01",
-            "website": "https://www.cmu.edu"
+            "website": "https://www.cmu.edu",
+            "supports_ed": True,
+            "supports_ea": False,
+            "supports_rd": True,
+            "internship_support_score": 8.8,
+            "personality_types": ["实践型", "探究型", "学术明星型"]
         },
         {
             "name": "University of Michigan",
@@ -224,7 +259,7 @@ def import_sample_data(db):
             "type": "public",
             "schoolSize": "large",
             "strengths": ["engineering", "computer science", "business", "medicine"],
-            "tags": ["undergrad_research", "intl_employment_friendly"],
+            "tags": ["undergrad_research", "intl_employment_friendly", "career_center_support", "student_club_support"],
             "has_internship_program": True,
             "has_research_program": True,
             "gptSummary": "密歇根大学在工程和计算机科学领域实力强劲，提供丰富的实习和研究机会。",
@@ -234,7 +269,12 @@ def import_sample_data(db):
             "actRange": "31-34",
             "gpaRange": "3.6-4.0",
             "applicationDeadline": "2024-02-01",
-            "website": "https://www.umich.edu"
+            "website": "https://www.umich.edu",
+            "supports_ed": False,
+            "supports_ea": True,
+            "supports_rd": True,
+            "internship_support_score": 8.0,
+            "personality_types": ["全能型", "努力型", "探究型"]
         },
         {
             "name": "Georgia Institute of Technology",
@@ -246,7 +286,7 @@ def import_sample_data(db):
             "type": "public",
             "schoolSize": "large",
             "strengths": ["engineering", "computer science", "industrial engineering"],
-            "tags": ["undergrad_research", "intl_employment_friendly"],
+            "tags": ["undergrad_research", "intl_employment_friendly", "career_center_support", "academic_competitions"],
             "has_internship_program": True,
             "has_research_program": True,
             "gptSummary": "佐治亚理工学院在工程领域享有盛誉，特别是工业工程和计算机科学专业。",
@@ -256,7 +296,12 @@ def import_sample_data(db):
             "actRange": "31-35",
             "gpaRange": "3.7-4.0",
             "applicationDeadline": "2024-01-15",
-            "website": "https://www.gatech.edu"
+            "website": "https://www.gatech.edu",
+            "supports_ed": False,
+            "supports_ea": True,
+            "supports_rd": True,
+            "internship_support_score": 7.5,
+            "personality_types": ["努力型", "探究型", "实践型"]
         },
         {
             "name": "University of Illinois Urbana-Champaign",
@@ -268,7 +313,7 @@ def import_sample_data(db):
             "type": "public",
             "schoolSize": "large",
             "strengths": ["engineering", "computer science", "agriculture"],
-            "tags": ["undergrad_research", "intl_employment_friendly"],
+            "tags": ["undergrad_research", "intl_employment_friendly", "career_center_support", "student_club_support"],
             "has_internship_program": True,
             "has_research_program": True,
             "gptSummary": "伊利诺伊大学香槟分校在工程和计算机科学领域实力强劲，提供优质的教育和研究环境。",
@@ -278,7 +323,12 @@ def import_sample_data(db):
             "actRange": "29-33",
             "gpaRange": "3.5-4.0",
             "applicationDeadline": "2024-01-05",
-            "website": "https://www.illinois.edu"
+            "website": "https://www.illinois.edu",
+            "supports_ed": False,
+            "supports_ea": False,
+            "supports_rd": True,
+            "internship_support_score": 7.0,
+            "personality_types": ["努力型", "潜力型", "探索型"]
         },
         {
             "name": "University of Texas at Austin",
@@ -290,7 +340,7 @@ def import_sample_data(db):
             "type": "public",
             "schoolSize": "large",
             "strengths": ["engineering", "computer science", "business"],
-            "tags": ["undergrad_research", "intl_employment_friendly"],
+            "tags": ["undergrad_research", "intl_employment_friendly", "career_center_support", "entrepreneurship_friendly"],
             "has_internship_program": True,
             "has_research_program": True,
             "gptSummary": "德克萨斯大学奥斯汀分校在工程和计算机科学领域表现优异，位于科技发展迅速的奥斯汀市。",
@@ -300,7 +350,12 @@ def import_sample_data(db):
             "actRange": "26-33",
             "gpaRange": "3.4-4.0",
             "applicationDeadline": "2024-12-01",
-            "website": "https://www.utexas.edu"
+            "website": "https://www.utexas.edu",
+            "supports_ed": False,
+            "supports_ea": False,
+            "supports_rd": True,
+            "internship_support_score": 7.2,
+            "personality_types": ["努力型", "实践型", "潜力型"]
         },
         {
             "name": "Purdue University",
@@ -312,7 +367,7 @@ def import_sample_data(db):
             "type": "public",
             "schoolSize": "large",
             "strengths": ["engineering", "aviation", "agriculture"],
-            "tags": ["undergrad_research", "intl_employment_friendly"],
+            "tags": ["undergrad_research", "intl_employment_friendly", "career_center_support", "academic_competitions"],
             "has_internship_program": True,
             "has_research_program": True,
             "gptSummary": "普渡大学在工程领域享有盛誉，特别是航空工程专业，提供优质的教育和研究机会。",
@@ -322,7 +377,12 @@ def import_sample_data(db):
             "actRange": "25-32",
             "gpaRange": "3.3-4.0",
             "applicationDeadline": "2024-01-15",
-            "website": "https://www.purdue.edu"
+            "website": "https://www.purdue.edu",
+            "supports_ed": False,
+            "supports_ea": False,
+            "supports_rd": True,
+            "internship_support_score": 6.5,
+            "personality_types": ["潜力型", "努力型", "探索型"]
         }
     ]
     
