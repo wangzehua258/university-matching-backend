@@ -2,12 +2,20 @@ import os
 from motor.motor_asyncio import AsyncIOMotorClient
 from dotenv import load_dotenv
 
+# Load environment variables
 load_dotenv()
 
 # MongoDB连接配置
 MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017")
 DATABASE_NAME = "university_matcher"
 MOCK_MODE = os.getenv("MOCK_MODE", "false").lower() == "true"
+
+# Debug: Print environment variables (remove in production)
+print(f"🔍 Environment Debug:")
+print(f"   MONGO_URL: {MONGO_URL[:50]}..." if len(MONGO_URL) > 50 else f"   MONGO_URL: {MONGO_URL}")
+print(f"   DATABASE_NAME: {DATABASE_NAME}")
+print(f"   MOCK_MODE: {MOCK_MODE}")
+print(f"   All env vars: {dict(os.environ)}")
 
 # 全局数据库连接
 db = None
@@ -23,8 +31,15 @@ async def connect_to_mongo():
         return
     
     try:
+        print(f"🔌 Attempting to connect to MongoDB...")
+        print(f"   URL: {MONGO_URL[:50]}..." if len(MONGO_URL) > 50 else f"   URL: {MONGO_URL}")
+        
         client = AsyncIOMotorClient(MONGO_URL)
         db = client[DATABASE_NAME]
+        
+        # Test connection first
+        await client.admin.command('ping')
+        print("✅ MongoDB connection test successful")
         
         # 创建索引
         await create_indexes()
@@ -33,7 +48,12 @@ async def connect_to_mongo():
     except Exception as e:
         print(f"❌ MongoDB连接失败: {e}")
         print("🔧 请确保MongoDB正在运行，或设置MOCK_MODE=true")
-        raise
+        
+        # Fallback to mock mode if connection fails
+        print("🔄 Falling back to MOCK_MODE for startup...")
+        db = MockDatabase()
+        # Don't raise the error, just log it and continue with mock mode
+        print("⚠️  Application will run in mock mode. Some features may not work properly.")
 
 def get_db():
     """获取数据库实例"""

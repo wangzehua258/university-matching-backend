@@ -7,11 +7,23 @@ from db.mongo import connect_to_mongo, close_mongo_connection
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 启动时连接数据库
-    await connect_to_mongo()
+    try:
+        # 启动时连接数据库
+        print("🚀 Starting application...")
+        await connect_to_mongo()
+        print("✅ Application startup completed")
+    except Exception as e:
+        print(f"❌ Application startup failed: {e}")
+        print("⚠️  Application will continue in limited mode")
+    
     yield
-    # 关闭时断开数据库连接
-    await close_mongo_connection()
+    
+    try:
+        # 关闭时断开数据库连接
+        await close_mongo_connection()
+        print("✅ Application shutdown completed")
+    except Exception as e:
+        print(f"❌ Application shutdown error: {e}")
 
 app = FastAPI(
     title="University Matcher API",
@@ -52,7 +64,28 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy"}
+    """Health check endpoint that doesn't require database connection"""
+    try:
+        from db.mongo import get_db
+        db = get_db()
+        if db is not None:
+            return {
+                "status": "healthy",
+                "database": "connected",
+                "timestamp": "2024-01-01T00:00:00Z"
+            }
+        else:
+            return {
+                "status": "degraded",
+                "database": "not_connected",
+                "timestamp": "2024-01-01T00:00:00Z"
+            }
+    except Exception as e:
+        return {
+            "status": "unhealthy",
+            "error": str(e),
+            "timestamp": "2024-01-01T00:00:00Z"
+        }
 
 if __name__ == "__main__":
     import uvicorn

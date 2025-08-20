@@ -32,3 +32,5 @@ services:
         sync: false
       - key: SMS_SIGN_NAME
         value: "全球大学智能匹配"
+      - key: MOCK_MODE
+        value: "false"
