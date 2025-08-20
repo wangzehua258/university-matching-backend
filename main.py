@@ -21,9 +21,21 @@ app = FastAPI(
 )
 
 # 配置CORS
+import os
+allowed_origins = [
+    "http://localhost:3000", 
+    "http://localhost:3001",
+    "https://your-domain.com",  # Replace with your GoDaddy domain
+    "https://your-vercel-app.vercel.app",  # Replace with your Vercel app URL
+]
+
+# Add environment variable for production origins
+if os.getenv("ALLOWED_ORIGINS"):
+    allowed_origins.extend(os.getenv("ALLOWED_ORIGINS").split(","))
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
