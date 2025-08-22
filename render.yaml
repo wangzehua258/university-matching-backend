@@ -34,3 +34,5 @@ services:
         value: "全球大学智能匹配"
       - key: MOCK_MODE
         value: "false"
+      - key: ALLOWED_ORIGINS
+        value: "https://www.xuanxiao360.com,https://xuanxiao360.com"

@@ -37,8 +37,8 @@ import os
 allowed_origins = [
     "http://localhost:3000", 
     "http://localhost:3001",
-    "https://your-domain.com",  # Replace with your GoDaddy domain
-    "https://your-vercel-app.vercel.app",  # Replace with your Vercel app URL
+    "https://www.xuanxiao360.com",  # Your GoDaddy domain
+    "https://xuanxiao360.com",  # Your GoDaddy domain without www
 ]
 
 # Add environment variable for production origins
