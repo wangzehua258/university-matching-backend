@@ -105,7 +105,44 @@ class MockDatabase:
         self.universities = MockCollection()
         self.parent_evaluations = MockCollection()
         self.student_personality_tests = MockCollection()
+        
+        # Add some sample data for testing
+        self._add_sample_data()
         print("🔧 Mock database initialized")
+    
+    def _add_sample_data(self):
+        """Add sample data for testing"""
+        sample_universities = [
+            {
+                "_id": "mock_1",
+                "name": "Harvard University",
+                "country": "USA",
+                "state": "Massachusetts",
+                "rank": 1,
+                "tuition": 55000,
+                "intlRate": 0.12,
+                "type": "private",
+                "strengths": ["business", "law", "medicine"],
+                "gptSummary": "哈佛大学是世界顶尖的私立研究型大学",
+                "logoUrl": "https://example.com/harvard.png"
+            },
+            {
+                "_id": "mock_2", 
+                "name": "Stanford University",
+                "country": "USA",
+                "state": "California",
+                "rank": 2,
+                "tuition": 56000,
+                "intlRate": 0.15,
+                "type": "private",
+                "strengths": ["engineering", "computer science"],
+                "gptSummary": "斯坦福大学在科技创新方面享有盛誉",
+                "logoUrl": "https://example.com/stanford.png"
+            }
+        ]
+        
+        for uni in sample_universities:
+            self.universities.data.append(uni)
 
 class MockCollection:
     """Mock collection for development"""
@@ -113,7 +150,7 @@ class MockCollection:
     def __init__(self):
         self.data = []
     
-    async def create_index(self, *args, **kwargs):
+    def create_index(self, *args, **kwargs):
         """Mock index creation"""
         pass
     
@@ -131,7 +168,7 @@ class MockCollection:
                 return doc
         return None
     
-    async def find(self, query):
+    def find(self, query):
         """Mock find operation"""
         results = []
         for doc in self.data:
@@ -182,4 +219,14 @@ class MockCursor:
             self.data.sort(key=lambda x: x.get(field, ''), reverse=True)
         else:
             self.data.sort(key=lambda x: x.get(field, ''))
+        return self
+    
+    def skip(self, count):
+        """Mock skip operation"""
+        self.data = self.data[count:]
+        return self
+    
+    def limit(self, count):
+        """Mock limit operation"""
+        self.data = self.data[:count]
         return self
