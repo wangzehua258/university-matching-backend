@@ -7,8 +7,8 @@ Replace the MONGO_URL below with your actual connection string
 import asyncio
 from motor.motor_asyncio import AsyncIOMotorClient
 
-# Replace this with your actual MongoDB Atlas connection string
-MONGO_URL = "mongodb+srv://university_matcher_user:YOUR_PASSWORD@cluster0.xxxxx.mongodb.net/university_matcher?retryWrites=true&w=majority"
+# Your actual MongoDB Atlas connection string
+MONGO_URL = "mongodb+srv://bellawang1018jhu:0kz3LuojiJWNr59J@cluster0.v9nqbc7.mongodb.net/university_matcher?retryWrites=true&w=majority&appName=Cluster0"
 
 async def test_connection():
     """Test MongoDB Atlas connection"""

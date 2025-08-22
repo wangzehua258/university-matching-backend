@@ -18,10 +18,12 @@ load_dotenv()
 
 async def init_production_database():
     """Initialize production database"""
-    mongo_url = os.getenv("MONGO_URL")
-    if not mongo_url:
-        print("Error: MONGO_URL environment variable not set")
-        return
+    # Use your actual MongoDB URL
+    mongo_url = "mongodb+srv://bellawang1018jhu:0kz3LuojiJWNr59J@cluster0.v9nqbc7.mongodb.net/university_matcher?retryWrites=true&w=majority&appName=Cluster0"
+    
+    print(f"Connecting to MongoDB Atlas: {mongo_url[:50]}...")
+    
+    print(f"Connecting to MongoDB: {mongo_url[:50]}...")
     
     print(f"Connecting to MongoDB: {mongo_url[:50]}...")
     
