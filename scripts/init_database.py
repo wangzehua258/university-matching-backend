@@ -52,7 +52,7 @@ def create_indexes(db):
         db.universities.create_index("strengths")
         db.universities.create_index("tuition")
         db.universities.create_index("type")
-        db.universities.create_index("schoolSize")
+        db.universities.create_index("school_size")
         db.universities.create_index("tags")
         
         # 新增字段索引
@@ -60,8 +60,8 @@ def create_indexes(db):
         db.universities.create_index("supports_ea")
         db.universities.create_index("supports_rd")
         db.universities.create_index("internship_support_score")
-        db.universities.create_index("acceptanceRate")
-        db.universities.create_index("intlRate")
+        db.universities.create_index("acceptance_rate")
+        db.universities.create_index("intl_rate")
         db.universities.create_index("state")
         db.universities.create_index("personality_types")
         
@@ -125,6 +125,24 @@ def import_universities_from_csv(db, csv_file_path, clear_existing=False):
         
         for row_num, row in enumerate(reader, 1):
             try:
+                # 调试：显示关键字段的原始值
+                if row_num <= 3:  # 只显示前3行
+                    print(f"🔍 第{row_num}行调试信息:")
+                    print(f"   acceptanceRate: '{row.get('acceptanceRate', 'NOT_FOUND')}'")
+                    print(f"   satRange: '{row.get('satRange', 'NOT_FOUND')}'")
+                    print(f"   actRange: '{row.get('actRange', 'NOT_FOUND')}'")
+                    print(f"   gpaRange: '{row.get('gpaRange', 'NOT_FOUND')}'")
+                    print(f"   applicationDeadline: '{row.get('applicationDeadline', 'NOT_FOUND')}'")
+                    print(f"   supports_ed: '{row.get('supports_ed', 'NOT_FOUND')}'")
+                    print(f"   supports_ea: '{row.get('supports_ea', 'NOT_FOUND')}'")
+                    print(f"   supports_rd: '{row.get('supports_rd', 'NOT_FOUND')}'")
+                    print(f"   has_internship_program: '{row.get('has_internship_program', 'NOT_FOUND')}'")
+                    print(f"   has_research_program: '{row.get('has_research_program', 'NOT_FOUND')}'")
+                    print(f"   internship_support_score: '{row.get('internship_support_score', 'NOT_FOUND')}'")
+                    print(f"   schoolSize: '{row.get('schoolSize', 'NOT_FOUND')}'")
+                    print(f"   website: '{row.get('website', 'NOT_FOUND')}'")
+                    print("   ---")
+                
                 # 数据清洗和转换 - 适配schools.csv格式
                 university = {
                     "name": row.get("name", "").strip(),
@@ -132,17 +150,17 @@ def import_universities_from_csv(db, csv_file_path, clear_existing=False):
                     "state": row.get("state", "").strip(),
                     "rank": clean_numeric_value(row.get("rank"), 999),
                     "tuition": clean_numeric_value(row.get("tuition"), 0),
-                    "intlRate": clean_numeric_value(row.get("intlRate"), 0, True),
+                    "intl_rate": clean_numeric_value(row.get("intlRate"), 0, True),
                     "type": row.get("type", "private").strip(),
-                    "schoolSize": row.get("schoolSize", "medium").strip(),
+                    "school_size": row.get("schoolSize", "medium").strip(),
                     "strengths": [s.strip() for s in row.get("strengths", "").split(",") if s.strip()] if row.get("strengths") else [],
-                    "gptSummary": row.get("gptSummary", "").strip(),
-                    "logoUrl": "",  # 暂时留空，后续可以添加
-                    "acceptanceRate": clean_numeric_value(row.get("acceptanceRate"), 0, True),
-                    "satRange": row.get("satRange", "").strip(),
-                    "actRange": row.get("actRange", "").strip(),
-                    "gpaRange": row.get("gpaRange", "").strip(),
-                    "applicationDeadline": row.get("applicationDeadline", "").strip(),
+                    "gpt_summary": row.get("gptSummary", "").strip(),
+                    "logo_url": "",  # 暂时留空，后续可以添加
+                    "acceptance_rate": clean_numeric_value(row.get("acceptanceRate"), 0, True),
+                    "sat_range": row.get("satRange", "").strip(),
+                    "act_range": row.get("actRange", "").strip(),
+                    "gpa_range": row.get("gpaRange", "").strip(),
+                    "application_deadline": row.get("applicationDeadline", "").strip(),
                     "website": row.get("website", "").strip(),
                     "supports_ed": clean_boolean_value(row.get("supports_ed")),
                     "supports_ea": clean_boolean_value(row.get("supports_ea")),
@@ -153,6 +171,24 @@ def import_universities_from_csv(db, csv_file_path, clear_existing=False):
                     "personality_types": [s.strip() for s in row.get("personality_types", "").split(",") if s.strip()] if row.get("personality_types") else [],
                     "tags": [s.strip() for s in row.get("tags", "").split(",") if s.strip()] if row.get("tags") else []
                 }
+                
+                # 调试：显示清洗后的关键字段值
+                if row_num <= 3:  # 只显示前3行
+                    print(f"🔧 第{row_num}行清洗后数据:")
+                    print(f"   acceptance_rate: {university['acceptance_rate']}")
+                    print(f"   sat_range: '{university['sat_range']}'")
+                    print(f"   act_range: '{university['act_range']}'")
+                    print(f"   gpa_range: '{university['gpa_range']}'")
+                    print(f"   application_deadline: '{university['application_deadline']}'")
+                    print(f"   supports_ed: {university['supports_ed']}")
+                    print(f"   supports_ea: {university['supports_ea']}")
+                    print(f"   supports_rd: {university['supports_rd']}")
+                    print(f"   has_internship_program: {university['has_internship_program']}")
+                    print(f"   has_research_program: {university['has_research_program']}")
+                    print(f"   internship_support_score: {university['internship_support_score']}")
+                    print(f"   school_size: '{university['school_size']}'")
+                    print(f"   website: '{university['website']}'")
+                    print("   ---")
                 
                 # 验证必需字段
                 if not university["name"]:
@@ -303,9 +339,9 @@ def show_database_stats(db):
         print(f"公立大学: {public_count} 所")
         
         # 规模分布
-        small_count = db.universities.count_documents({"schoolSize": "small"})
-        medium_count = db.universities.count_documents({"schoolSize": "medium"})
-        large_count = db.universities.count_documents({"schoolSize": "large"})
+        small_count = db.universities.count_documents({"school_size": "small"})
+        medium_count = db.universities.count_documents({"school_size": "medium"})
+        large_count = db.universities.count_documents({"school_size": "large"})
         print(f"小型学校: {small_count} 所")
         print(f"中型学校: {medium_count} 所")
         print(f"大型学校: {large_count} 所")

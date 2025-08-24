@@ -83,11 +83,11 @@ async def get_universities(
             state=uni["state"],
             rank=uni["rank"],
             tuition=uni["tuition"],
-            intl_rate=uni["intlRate"],
+            intl_rate=uni["intl_rate"],
             type=uni["type"],
             strengths=uni["strengths"],
-            gpt_summary=uni["gptSummary"],
-            logo_url=uni.get("logoUrl")
+            gpt_summary=uni["gpt_summary"],
+            logo_url=uni.get("logo_url")
         ))
     
     return result
@@ -172,11 +172,11 @@ async def get_universities_paginated(
             state=uni["state"],
             rank=uni["rank"],
             tuition=uni["tuition"],
-            intl_rate=uni["intlRate"],
+            intl_rate=uni["intl_rate"],
             type=uni["type"],
             strengths=uni["strengths"],
-            gpt_summary=uni["gptSummary"],
-            logo_url=uni.get("logoUrl")
+            gpt_summary=uni["gpt_summary"],
+            logo_url=uni.get("logo_url")
         ))
     
     return PaginatedUniversityResponse(
@@ -210,11 +210,28 @@ async def get_university(university_id: str):
         state=university["state"],
         rank=university["rank"],
         tuition=university["tuition"],
-        intl_rate=university["intlRate"],
+        intl_rate=university["intl_rate"],
         type=university["type"],
         strengths=university["strengths"],
-        gpt_summary=university["gptSummary"],
-        logo_url=university.get("logoUrl")
+        gpt_summary=university["gpt_summary"],
+        logo_url=university.get("logo_url"),
+        location=university.get("location"),
+        personality_types=university.get("personality_types"),
+        school_size=university.get("school_size"),
+        description=university.get("description"),
+        supports_ed=university.get("supports_ed"),
+        supports_ea=university.get("supports_ea"),
+        supports_rd=university.get("supports_rd"),
+        internship_support_score=university.get("internship_support_score"),
+        acceptance_rate=university.get("acceptance_rate"),
+        sat_range=university.get("sat_range"),
+        act_range=university.get("act_range"),
+        gpa_range=university.get("gpa_range"),
+        application_deadline=university.get("application_deadline"),
+        website=university.get("website"),
+        has_internship_program=university.get("has_internship_program"),
+        has_research_program=university.get("has_research_program"),
+        tags=university.get("tags")
     )
 
 @router.get("/countries/list")
