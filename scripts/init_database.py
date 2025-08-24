@@ -29,14 +29,14 @@ def create_indexes(db):
     print("创建数据库索引...")
     
     try:
-        # 用户集合索引
-        db.users.create_index("created_at")
+    # 用户集合索引
+    db.users.create_index("created_at")
         print("✅ 用户索引创建完成")
     except Exception as e:
         print(f"⚠️  用户索引创建跳过: {e}")
     
     try:
-        # 大学集合索引 - 更新以支持新字段
+    # 大学集合索引 - 更新以支持新字段
         # 先删除可能冲突的索引
         try:
             db.universities.drop_index("name_1")
@@ -46,35 +46,35 @@ def create_indexes(db):
         
         # 创建新索引
         db.universities.create_index("name", unique=True)  # 确保大学名称唯一
-        db.universities.create_index("country")
-        db.universities.create_index("rank")
-        db.universities.create_index([("country", ASCENDING), ("rank", ASCENDING)])
-        db.universities.create_index("strengths")
-        db.universities.create_index("tuition")
-        db.universities.create_index("type")
+    db.universities.create_index("country")
+    db.universities.create_index("rank")
+    db.universities.create_index([("country", ASCENDING), ("rank", ASCENDING)])
+    db.universities.create_index("strengths")
+    db.universities.create_index("tuition")
+    db.universities.create_index("type")
         db.universities.create_index("school_size")
-        db.universities.create_index("tags")
-        
-        # 新增字段索引
-        db.universities.create_index("supports_ed")
-        db.universities.create_index("supports_ea")
-        db.universities.create_index("supports_rd")
-        db.universities.create_index("internship_support_score")
+    db.universities.create_index("tags")
+    
+    # 新增字段索引
+    db.universities.create_index("supports_ed")
+    db.universities.create_index("supports_ea")
+    db.universities.create_index("supports_rd")
+    db.universities.create_index("internship_support_score")
         db.universities.create_index("acceptance_rate")
         db.universities.create_index("intl_rate")
-        db.universities.create_index("state")
-        db.universities.create_index("personality_types")
-        
+    db.universities.create_index("state")
+    db.universities.create_index("personality_types")
+    
         print("✅ 大学索引创建完成")
     except Exception as e:
         print(f"⚠️  大学索引创建跳过: {e}")
     
     try:
-        # 评估结果索引
-        db.parent_evaluations.create_index("user_id")
-        db.parent_evaluations.create_index("created_at")
-        db.student_personality_tests.create_index("user_id")
-        db.student_personality_tests.create_index("created_at")
+    # 评估结果索引
+    db.parent_evaluations.create_index("user_id")
+    db.parent_evaluations.create_index("created_at")
+    db.student_personality_tests.create_index("user_id")
+    db.student_personality_tests.create_index("created_at")
         print("✅ 评估索引创建完成")
     except Exception as e:
         print(f"⚠️  评估索引创建跳过: {e}")
@@ -114,7 +114,7 @@ def import_universities_from_csv(db, csv_file_path, clear_existing=False):
     
     # 是否清空现有数据
     if clear_existing:
-        db.universities.delete_many({})
+    db.universities.delete_many({})
         print("已清空现有数据")
     
     with open(csv_file_path, 'r', encoding='utf-8') as file:
@@ -144,7 +144,7 @@ def import_universities_from_csv(db, csv_file_path, clear_existing=False):
                     print("   ---")
                 
                 # 数据清洗和转换 - 适配schools.csv格式
-                university = {
+            university = {
                     "name": row.get("name", "").strip(),
                     "country": row.get("country", "").strip(),
                     "state": row.get("state", "").strip(),
@@ -209,7 +209,7 @@ def import_universities_from_csv(db, csv_file_path, clear_existing=False):
                         )
                         updated_count += 1
                 else:
-                    universities.append(university)
+            universities.append(university)
                 
             except Exception as e:
                 print(f"❌ 第{row_num}行数据错误: {e}")
@@ -219,7 +219,7 @@ def import_universities_from_csv(db, csv_file_path, clear_existing=False):
         # 批量插入新数据
         if universities:
             try:
-                result = db.universities.insert_many(universities)
+            result = db.universities.insert_many(universities)
                 inserted_count = len(result.inserted_ids)
                 print(f"✅ 成功插入 {inserted_count} 所新大学")
             except Exception as e:
@@ -363,7 +363,7 @@ def main():
     
     # 连接数据库
     try:
-        db = connect_database()
+    db = connect_database()
         print("✅ 数据库连接成功")
     except Exception as e:
         print(f"❌ 数据库连接失败: {e}")

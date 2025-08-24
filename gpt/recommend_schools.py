@@ -8,21 +8,43 @@ from db.mongo import get_db
 
 load_dotenv()
 
-def build_hard_filters(input_data: ParentEvaluationInput) -> Dict[str, Any]:
-    """构建强约束过滤规则"""
+def build_hard_filters(input_data: ParentEvaluationInput, strict_mode: bool = True) -> Dict[str, Any]:
+    """构建强约束过滤规则
+    
+    Args:
+        input_data: 家长评估输入
+        strict_mode: 是否使用严格模式（True=严格，False=宽松）
+    """
     
     # 中文到英文的映射
     chinese_to_english = {
         "计算机科学": "computer science",
-        "人工智能": "artificial intelligence", 
+        "人工智能": "artificial intelligence",
         "工程学": "engineering",
         "商科": "business",
         "医学": "medicine",
-        "艺术设计": "art",
+        "艺术设计": "arts",
         "人文社科": "humanities",
-        "自然科学": "science",
+        "自然科学": "natural sciences",
         "教育学": "education",
-        "法学": "law"
+        "法学": "law",
+        "公共政策": "public policy",
+        "经济学": "economics",
+        "物理学": "physics",
+        "化学": "chemistry",
+        "心理学": "psychology",
+        "生物学": "biology",
+        "创业": "entrepreneurship",
+        "公共健康": "public health",
+        "国际关系": "international relations",
+        "政治学": "political science",
+        "农业": "agriculture",
+        "兽医学": "veterinary",
+        "传播学": "communication",
+        "电影学": "film",
+        "海洋学": "oceanography",
+        "药学": "pharmacy",
+        "神学": "theology"
     }
     
     # 将中文兴趣方向转换为英文
@@ -34,30 +56,48 @@ def build_hard_filters(input_data: ParentEvaluationInput) -> Dict[str, Any]:
             english_interests.append(interest)
     
     filters = {
-        "country": input_data.target_country,
-        "strengths": {"$in": english_interests}
+        "country": input_data.target_country
     }
 
-    # 预算转换
+    # 专业匹配：根据模式调整严格程度
+    if strict_mode:
+        # 严格模式：要求学校包含用户选择的至少1个专业（放宽要求）
+        filters["strengths"] = {"$in": english_interests}
+    else:
+        # 宽松模式：不限制专业，只按其他条件筛选
+        pass
+
+    # 预算转换 (人民币转美元，汇率约7.2)
     budget_map = {
-        "<20w": 30000,
-        "20-40w": 50000,
-        "30-50w": 60000,
-        "40-60w": 70000,
-        "不设限": 100000
+        "35万-40万": 56000,  # 40万人民币 ≈ 5.6万美元
+        "40万-50万": 70000,  # 50万人民币 ≈ 7万美元
+        "50万-60万": 84000,  # 60万人民币 ≈ 8.4万美元
+        "60万+": 100000     # 60万以上人民币 ≈ 10万美元
     }
     max_tuition = budget_map.get(input_data.budget, 100000)
-    filters["tuition"] = {"$lte": max_tuition}
+    
+    if strict_mode:
+        # 严格模式：按预算限制
+        filters["tuition"] = {"$lte": max_tuition}
+    else:
+        # 宽松模式：放宽预算限制（增加50%）
+        filters["tuition"] = {"$lte": max_tuition * 1.5}
 
     # GPA范围 → 最高可申请的学校排名
     gpa_rank_map = {
-        "2.5-3.0": 150,
-        "3.0-3.5": 100,
-        "3.5-3.8": 60,
-        "3.8以上": 30
+        "3.6-": 150,
+        "3.6+": 100,
+        "3.8+": 60,
+        "3.9+": 30
     }
     max_rank = gpa_rank_map.get(input_data.gpa_range, 200)
-    filters["rank"] = {"$lte": max_rank}
+    
+    if strict_mode:
+        # 严格模式：按GPA限制排名
+        filters["rank"] = {"$lte": max_rank}
+    else:
+        # 宽松模式：放宽排名限制（增加50%）
+        filters["rank"] = {"$lte": max_rank * 1.5}
 
     return filters
 
@@ -114,14 +154,16 @@ def score_school(school: Dict[str, Any], input_data: ParentEvaluationInput) -> f
     if input_data.activities and school.get("tags"):
         activity_score = 0.0
         activity_mappings = {
-            "竞赛": "academic_competitions",
+            "学术竞赛": "academic_competitions",
             "科研": "undergrad_research", 
             "学生会": "student_government_support",
             "社团活动": "student_club_support",
             "志愿服务": "community_service_opportunities",
             "实习经历": "career_center_support",
             "创业经历": "entrepreneurship_friendly",
-            "推荐信准备": "recommendation_letter_support"
+            "推荐信准备": "recommendation_letter_support",
+            "职业规划": "career_center_support",
+            "社区服务": "community_service_opportunities"
         }
         
         for activity in input_data.activities:
@@ -173,8 +215,21 @@ def score_school(school: Dict[str, Any], input_data: ParentEvaluationInput) -> f
 def parse_budget_max(budget_str: str) -> Optional[float]:
     """解析预算字符串，返回最大值"""
     try:
+        # 处理中文万单位格式，如 "35万-40万"
+        if "万" in budget_str:
+            import re
+            numbers = re.findall(r'\d+', budget_str)
+            if len(numbers) >= 2:
+                # 取最后一个数字作为最大值，转换为美元（汇率7.2）
+                max_rmb = float(numbers[-1]) * 10000  # 万转换为元
+                return max_rmb / 7.2  # 转换为美元
+            elif len(numbers) == 1:
+                # 单个数字，如 "60万+"
+                max_rmb = float(numbers[0]) * 10000
+                return max_rmb / 7.2
+        
         # 处理各种预算格式
-        if "以上" in budget_str or "above" in budget_str.lower():
+        elif "以上" in budget_str or "above" in budget_str.lower():
             # 提取数字部分
             import re
             numbers = re.findall(r'\d+', budget_str)
@@ -216,11 +271,48 @@ async def recommend_schools_for_parent(input_data: ParentEvaluationInput) -> Lis
         client = AsyncIOMotorClient('mongodb://localhost:27017')
         db = client.university_matcher
     
-    # 构建强约束过滤条件
-    filters = build_hard_filters(input_data)
+    # 第一步：使用严格模式筛选
+    strict_filters = build_hard_filters(input_data, strict_mode=True)
+    filtered_schools = await db.universities.find(strict_filters).to_list(length=None)
     
-    # 执行过滤查询
-    filtered_schools = await db.universities.find(filters).to_list(length=None)
+    # 如果严格筛选结果太少，使用宽松模式
+    if len(filtered_schools) < 5:
+        print(f"⚠️ 严格筛选只找到 {len(filtered_schools)} 所学校，切换到宽松模式...")
+        
+        # 使用宽松模式重新筛选
+        loose_filters = build_hard_filters(input_data, strict_mode=False)
+        filtered_schools = await db.universities.find(loose_filters).to_list(length=None)
+        print(f"🔍 宽松模式找到 {len(filtered_schools)} 所学校")
+        
+        # 如果宽松模式还是太少，进一步放宽条件
+        if len(filtered_schools) < 5:
+            print(f"⚠️ 宽松筛选仍只找到 {len(filtered_schools)} 所学校，进一步放宽条件...")
+            
+            # 进一步放宽：只保留国家限制，移除其他所有限制
+            basic_filters = {"country": input_data.target_country}
+            filtered_schools = await db.universities.find(basic_filters).to_list(length=None)
+            print(f"🔍 基础筛选找到 {len(filtered_schools)} 所学校")
+    
+    # 确保至少有10所学校进入评分环节
+    if len(filtered_schools) < 10:
+        print(f"⚠️ 筛选后学校数量不足，当前只有 {len(filtered_schools)} 所")
+        
+        # 如果还是太少，从数据库中随机选择一些学校补充
+        if len(filtered_schools) < 5:
+            # 获取所有美国学校
+            all_us_schools = await db.universities.find({"country": "USA"}).to_list(length=None)
+            
+            # 随机选择一些学校补充（避免重复）
+            existing_ids = {str(school["_id"]) for school in filtered_schools}
+            additional_schools = []
+            
+            for school in all_us_schools:
+                if str(school["_id"]) not in existing_ids and len(additional_schools) < 10:
+                    additional_schools.append(school)
+                    existing_ids.add(str(school["_id"]))
+            
+            filtered_schools.extend(additional_schools)
+            print(f"🔍 补充后共有 {len(filtered_schools)} 所学校")
     
     # 为每所学校打分
     scored_schools = [(school, score_school(school, input_data)) for school in filtered_schools]
@@ -231,40 +323,91 @@ async def recommend_schools_for_parent(input_data: ParentEvaluationInput) -> Lis
     # 返回前10所学校的ID
     top_10_ids = [str(school["_id"]) for school, _ in top_schools[:10]]
     
+    print(f"✅ 最终推荐 {len(top_10_ids)} 所学校")
     return top_10_ids
 
 def classify_applications(recommended_schools: List[Dict[str, Any]]) -> Tuple[Dict[str, Any], List[Dict[str, Any]], List[Dict[str, Any]]]:
-    """分类ED/EA/RD申请策略 - 基于学校是否支持对应申请轮次"""
+    """分类ED/EA/RD申请策略 - 智能推荐完整的申请组合
+    
+    策略：
+    1. ED: 1所最适合的学校（支持ED且排名较高）
+    2. EA: 2-3所支持EA的学校（避免与ED重复）
+    3. RD: 至少3所剩余学校，确保申请策略完整
+    """
     if not recommended_schools:
         return None, [], []
+    
+    print(f"🔍 开始分类 {len(recommended_schools)} 所学校...")
     
     # 初始化结果
     ed_suggestion = None
     ea_suggestions = []
     rd_suggestions = []
     
-    # 1. 优先选择支持 Early Decision 的学校作为 ED 建议
-    for school in recommended_schools:
-        if school.get("supports_ed", True):
+    # 按排名排序学校，确保选择质量
+    sorted_schools = sorted(recommended_schools, key=lambda x: x.get("rank", 999))
+    
+    # 1. 选择ED学校：优先选择支持ED且排名较高的学校
+    for school in sorted_schools:
+        if school.get("supports_ed", False):  # 明确检查是否支持ED
             ed_suggestion = school
+            print(f"✅ 选择ED学校: {school.get('name', 'Unknown')} (排名: {school.get('rank', 'N/A')})")
             break
     
-    # 2. 选择支持 Early Action 的前两所学校作为 EA 建议
-    ea_count = 0
-    for school in recommended_schools:
-        if school.get("supports_ea", True) and ea_count < 2:
-            # 避免重复推荐ED学校
-            if ed_suggestion is None or school["id"] != ed_suggestion["id"]:
-                ea_suggestions.append(school)
-                ea_count += 1
+    # 如果没有找到支持ED的学校，选择排名最高的学校作为ED（即使不支持ED）
+    if ed_suggestion is None and sorted_schools:
+        ed_suggestion = sorted_schools[0]
+        print(f"⚠️ 未找到支持ED的学校，选择排名最高的学校作为ED: {ed_suggestion.get('name', 'Unknown')}")
     
-    # 3. 剩下的学校全部归为 RD 建议
-    for school in recommended_schools:
+    # 2. 选择EA学校：选择支持EA的学校，避免与ED重复
+    ea_count = 0
+    max_ea = 3  # 最多推荐3所EA学校
+    
+    for school in sorted_schools:
+        if ea_count >= max_ea:
+            break
+            
+        # 跳过已选为ED的学校
+        if ed_suggestion and str(school.get("id", "")) == str(ed_suggestion.get("id", "")):
+            continue
+            
+        # 选择支持EA的学校
+        if school.get("supports_ea", False):
+            ea_suggestions.append(school)
+            ea_count += 1
+            print(f"✅ 选择EA学校: {school.get('name', 'Unknown')} (排名: {school.get('rank', 'N/A')})")
+    
+    # 如果EA学校太少，从剩余学校中补充（即使不支持EA）
+    if len(ea_suggestions) < 2:
+        remaining_for_ea = [s for s in sorted_schools 
+                           if s not in ea_suggestions and 
+                           (ed_suggestion is None or str(s.get("id", "")) != str(ed_suggestion.get("id", "")))]
+        
+        for school in remaining_for_ea[:2 - len(ea_suggestions)]:
+            ea_suggestions.append(school)
+            print(f"⚠️ 补充EA学校: {school.get('name', 'Unknown')} (排名: {school.get('rank', 'N/A')})")
+    
+    # 3. 选择RD学校：剩余的所有学校，确保至少3所
+    for school in sorted_schools:
         # 跳过已选为ED和EA的学校
-        if (ed_suggestion and school["id"] == ed_suggestion["id"]) or \
-           any(ea["id"] == school["id"] for ea in ea_suggestions):
+        if (ed_suggestion and str(school.get("id", "")) == str(ed_suggestion.get("id", ""))) or \
+           any(str(ea.get("id", "")) == str(school.get("id", "")) for ea in ea_suggestions):
             continue
         rd_suggestions.append(school)
+    
+    # 如果RD学校太少，从EA学校中转移一些到RD
+    if len(rd_suggestions) < 3 and len(ea_suggestions) > 2:
+        transfer_count = min(3 - len(rd_suggestions), len(ea_suggestions) - 2)
+        for i in range(transfer_count):
+            school = ea_suggestions.pop()
+            rd_suggestions.append(school)
+            print(f"🔄 将 {school.get('name', 'Unknown')} 从EA转移到RD")
+    
+    # 最终统计
+    print(f"📊 分类完成:")
+    print(f"   ED: {ed_suggestion.get('name', 'None') if ed_suggestion else 'None'}")
+    print(f"   EA: {len(ea_suggestions)} 所 - {[s.get('name', 'Unknown') for s in ea_suggestions]}")
+    print(f"   RD: {len(rd_suggestions)} 所 - {[s.get('name', 'Unknown') for s in rd_suggestions[:3]]}")
     
     return ed_suggestion, ea_suggestions, rd_suggestions
 
@@ -288,22 +431,22 @@ def generate_student_profile(input_data: ParentEvaluationInput) -> Dict[str, str
     # 1. 学术明星型（ACADEMIC_STAR）
     if (gpa_numeric >= 3.8 and sat_score and sat_score >= 1450 and 
         has_research_competition_activities(activities) and 
-        len(interest_fields) >= 1):
+        len(interest_fields) >= 3):
         return {
             "type": "学术明星型（ACADEMIC_STAR）",
             "description": f"您的孩子是一位{gpa_range}的优秀学生，SAT {sat_score}分，在学术方面极为突出。{format_activities_description(activities)}，对{', '.join(interest_fields)}领域表现出浓厚兴趣。适合冲击Top 30高排名大学，建议采用积极申请策略。"
         }
     
     # 2. 全能型（BALANCED）
-    if (gpa_numeric >= 3.5 and len(activities) >= 3 and 
-        has_diverse_activities(activities) and len(interest_fields) >= 1):
+    if (gpa_numeric >= 3.5 and len(activities) >= 2 and 
+        has_diverse_activities(activities) and len(interest_fields) >= 3):
         return {
             "type": "全能型（BALANCED）",
             "description": f"您的孩子是一位{gpa_range}的学生，{format_activities_description(activities)}，在学术和活动方面均衡发展。对{', '.join(interest_fields)}领域表现出浓厚兴趣。适合多方向平衡申请策略，建议ED+EA+RD组合申请。"
         }
     
     # 3. 探究型（RESEARCHER）
-    if (has_research_activities(activities) and len(interest_fields) <= 2 and gpa_numeric >= 3.5):
+    if (has_research_activities(activities) and len(interest_fields) >= 3 and gpa_numeric >= 3.5):
         return {
             "type": "探究型（RESEARCHER）",
             "description": f"您的孩子是一位{gpa_range}的学生，{format_research_activities_description(activities)}，偏好探索与深度学习。对{', '.join(interest_fields)}领域有明确兴趣。建议关注研究资源丰富、本科研究机会多的学校。"
@@ -331,7 +474,7 @@ def generate_student_profile(input_data: ParentEvaluationInput) -> Dict[str, str
         }
     
     # 7. 努力型（HARDWORKER）
-    if (gpa_numeric >= 3.0 and gpa_numeric < 3.5 and 
+    if (gpa_numeric >= 3.2 and gpa_numeric < 3.6 and 
         has_clear_goals(target_country, interest_fields) and has_budget_match(budget)):
         return {
             "type": "努力型（HARDWORKER）",
@@ -339,7 +482,7 @@ def generate_student_profile(input_data: ParentEvaluationInput) -> Dict[str, str
         }
     
     # 8. 潜力型（POTENTIAL）
-    if ((gpa_numeric < 3.0 or len(activities) < 2) and 
+    if ((gpa_numeric < 3.2 or len(activities) < 2) and 
         (has_high_budget(budget) or has_high_expectation(family_expectation))):
         return {
             "type": "潜力型（POTENTIAL）",
@@ -355,14 +498,14 @@ def generate_student_profile(input_data: ParentEvaluationInput) -> Dict[str, str
 # 辅助函数
 def parse_gpa_range(gpa_range: str) -> float:
     """解析GPA范围字符串，返回数值"""
-    if "3.8以上" in gpa_range:
+    if gpa_range == "3.9+":
         return 3.9
-    elif "3.5-3.8" in gpa_range:
-        return 3.65
-    elif "3.0-3.5" in gpa_range:
-        return 3.25
-    elif "2.5-3.0" in gpa_range:
-        return 2.75
+    elif gpa_range == "3.8+":
+        return 3.8
+    elif gpa_range == "3.6+":
+        return 3.6
+    elif gpa_range == "3.6-":
+        return 3.2
     else:
         return 3.0  # 默认值
 
@@ -474,9 +617,9 @@ def generate_application_strategy(input_data: ParentEvaluationInput, school_coun
     """生成申请策略建议"""
     strategy = f"基于您孩子的背景，我们为您推荐了{school_count}所适合的大学。"
     
-    if "3.8以上" in input_data.gpa_range:
+    if input_data.gpa_range == "3.9+" or input_data.gpa_range == "3.8+":
         strategy += " 建议采用积极申请策略，重点考虑Top 30的学校。"
-    elif "3.5-3.8" in input_data.gpa_range:
+    elif input_data.gpa_range == "3.6+":
         strategy += " 建议采用平衡申请策略，包括冲刺校、匹配校和保底校。"
     else:
         strategy += " 建议采用稳健申请策略，重点关注匹配校和保底校。"
