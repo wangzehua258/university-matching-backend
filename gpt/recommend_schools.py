@@ -354,10 +354,10 @@ def classify_applications(recommended_schools: List[Dict[str, Any]]) -> Tuple[Di
             print(f"✅ 选择ED学校: {school.get('name', 'Unknown')} (排名: {school.get('rank', 'N/A')})")
             break
     
-    # 如果没有找到支持ED的学校，选择排名最高的学校作为ED（即使不支持ED）
-    if ed_suggestion is None and sorted_schools:
-        ed_suggestion = sorted_schools[0]
-        print(f"⚠️ 未找到支持ED的学校，选择排名最高的学校作为ED: {ed_suggestion.get('name', 'Unknown')}")
+    # 如果没有找到支持ED的学校，不强制推荐ED
+    if ed_suggestion is None:
+        print(f"⚠️ 未找到支持ED的学校，本次不推荐ED申请")
+        ed_suggestion = None
     
     # 2. 选择EA学校：选择支持EA的学校，避免与ED重复
     ea_count = 0
@@ -377,15 +377,20 @@ def classify_applications(recommended_schools: List[Dict[str, Any]]) -> Tuple[Di
             ea_count += 1
             print(f"✅ 选择EA学校: {school.get('name', 'Unknown')} (排名: {school.get('rank', 'N/A')})")
     
-    # 如果EA学校太少，从剩余学校中补充（即使不支持EA）
+    # 如果EA学校太少，从剩余学校中补充（只补充真正支持EA的学校）
     if len(ea_suggestions) < 2:
         remaining_for_ea = [s for s in sorted_schools 
                            if s not in ea_suggestions and 
-                           (ed_suggestion is None or str(s.get("id", "")) != str(ed_suggestion.get("id", "")))]
+                           (ed_suggestion is None or str(s.get("id", "")) != str(ed_suggestion.get("id", ""))) and
+                           s.get("supports_ea", False)]  # 只选择支持EA的学校
         
         for school in remaining_for_ea[:2 - len(ea_suggestions)]:
             ea_suggestions.append(school)
-            print(f"⚠️ 补充EA学校: {school.get('name', 'Unknown')} (排名: {school.get('rank', 'N/A')})")
+            print(f"✅ 补充EA学校: {school.get('name', 'Unknown')} (排名: {school.get('rank', 'N/A')})")
+        
+        # 如果仍然不足2所EA学校，说明支持EA的学校确实不够
+        if len(ea_suggestions) < 2:
+            print(f"⚠️ 支持EA的学校不足2所，当前只有 {len(ea_suggestions)} 所")
     
     # 3. 选择RD学校：剩余的所有学校，确保至少3所
     for school in sorted_schools:
