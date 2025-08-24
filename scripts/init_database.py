@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 数据库初始化脚本
-用于导入大学数据、创建索引等
+支持CSV导入、增量更新和批量操作
 """
 
 import os
@@ -28,39 +28,83 @@ def create_indexes(db):
     """创建数据库索引"""
     print("创建数据库索引...")
     
-    # 用户集合索引
-    db.users.create_index("created_at")
+    try:
+        # 用户集合索引
+        db.users.create_index("created_at")
+        print("✅ 用户索引创建完成")
+    except Exception as e:
+        print(f"⚠️  用户索引创建跳过: {e}")
     
-    # 大学集合索引 - 更新以支持新字段
-    db.universities.create_index("name")
-    db.universities.create_index("country")
-    db.universities.create_index("rank")
-    db.universities.create_index([("country", ASCENDING), ("rank", ASCENDING)])
-    db.universities.create_index("strengths")
-    db.universities.create_index("tuition")
-    db.universities.create_index("type")
-    db.universities.create_index("schoolSize")
-    db.universities.create_index("tags")
+    try:
+        # 大学集合索引 - 更新以支持新字段
+        # 先删除可能冲突的索引
+        try:
+            db.universities.drop_index("name_1")
+            print("🔄 删除旧名称索引")
+        except:
+            pass
+        
+        # 创建新索引
+        db.universities.create_index("name", unique=True)  # 确保大学名称唯一
+        db.universities.create_index("country")
+        db.universities.create_index("rank")
+        db.universities.create_index([("country", ASCENDING), ("rank", ASCENDING)])
+        db.universities.create_index("strengths")
+        db.universities.create_index("tuition")
+        db.universities.create_index("type")
+        db.universities.create_index("schoolSize")
+        db.universities.create_index("tags")
+        
+        # 新增字段索引
+        db.universities.create_index("supports_ed")
+        db.universities.create_index("supports_ea")
+        db.universities.create_index("supports_rd")
+        db.universities.create_index("internship_support_score")
+        db.universities.create_index("acceptanceRate")
+        db.universities.create_index("intlRate")
+        db.universities.create_index("state")
+        db.universities.create_index("personality_types")
+        
+        print("✅ 大学索引创建完成")
+    except Exception as e:
+        print(f"⚠️  大学索引创建跳过: {e}")
     
-    # 新增字段索引
-    db.universities.create_index("supports_ed")
-    db.universities.create_index("supports_ea")
-    db.universities.create_index("supports_rd")
-    db.universities.create_index("internship_support_score")
-    db.universities.create_index("acceptanceRate")
-    db.universities.create_index("intlRate")
-    db.universities.create_index("state")
-    db.universities.create_index("personality_types")
-    
-    # 评估结果索引
-    db.parent_evaluations.create_index("user_id")
-    db.parent_evaluations.create_index("created_at")
-    db.student_personality_tests.create_index("user_id")
-    db.student_personality_tests.create_index("created_at")
+    try:
+        # 评估结果索引
+        db.parent_evaluations.create_index("user_id")
+        db.parent_evaluations.create_index("created_at")
+        db.student_personality_tests.create_index("user_id")
+        db.student_personality_tests.create_index("created_at")
+        print("✅ 评估索引创建完成")
+    except Exception as e:
+        print(f"⚠️  评估索引创建跳过: {e}")
     
     print("索引创建完成")
 
-def import_universities_from_csv(db, csv_file_path):
+def clean_boolean_value(value):
+    """清理布尔值"""
+    if isinstance(value, str):
+        value = value.strip().upper()
+        if value in ['TRUE', 'T', 'YES', 'Y', '1']:
+            return True
+        elif value in ['FALSE', 'F', 'NO', 'N', '0']:
+            return False
+    return False
+
+def clean_numeric_value(value, default=0, is_float=False):
+    """清理数值"""
+    if not value or value == '':
+        return default
+    
+    try:
+        if is_float:
+            return float(value)
+        else:
+            return int(value)
+    except (ValueError, TypeError):
+        return default
+
+def import_universities_from_csv(db, csv_file_path, clear_existing=False):
     """从CSV文件导入大学数据"""
     if not os.path.exists(csv_file_path):
         print(f"CSV文件不存在: {csv_file_path}")
@@ -68,346 +112,274 @@ def import_universities_from_csv(db, csv_file_path):
     
     print(f"从CSV文件导入大学数据: {csv_file_path}")
     
-    # 清空现有数据
-    db.universities.delete_many({})
+    # 是否清空现有数据
+    if clear_existing:
+        db.universities.delete_many({})
+        print("已清空现有数据")
     
     with open(csv_file_path, 'r', encoding='utf-8') as file:
         reader = csv.DictReader(file)
         universities = []
+        updated_count = 0
+        inserted_count = 0
         
-        for row in reader:
-            university = {
-                "name": row.get("name", ""),
-                "country": row.get("country", ""),
-                "state": row.get("state", ""),
-                "rank": int(row.get("rank", 999)),
-                "tuition": int(row.get("tuition", 0)),
-                "intlRate": float(row.get("intl_rate", 0)),
-                "type": row.get("type", "private"),
-                "schoolSize": row.get("school_size", "medium"),
-                "strengths": row.get("strengths", "").split(",") if row.get("strengths") else [],
-                "tags": row.get("tags", "").split(",") if row.get("tags") else [],
-                "has_internship_program": row.get("has_internship_program", "true").lower() == "true",
-                "has_research_program": row.get("has_research_program", "true").lower() == "true",
-                "gptSummary": row.get("gpt_summary", ""),
-                "logoUrl": row.get("logo_url", ""),
-                "acceptanceRate": float(row.get("acceptance_rate", 0)),
-                "satRange": row.get("sat_range", ""),
-                "actRange": row.get("act_range", ""),
-                "gpaRange": row.get("gpa_range", ""),
-                "applicationDeadline": row.get("application_deadline", ""),
-                "website": row.get("website", "")
-            }
-            universities.append(university)
+        for row_num, row in enumerate(reader, 1):
+            try:
+                # 数据清洗和转换 - 适配schools.csv格式
+                university = {
+                    "name": row.get("name", "").strip(),
+                    "country": row.get("country", "").strip(),
+                    "state": row.get("state", "").strip(),
+                    "rank": clean_numeric_value(row.get("rank"), 999),
+                    "tuition": clean_numeric_value(row.get("tuition"), 0),
+                    "intlRate": clean_numeric_value(row.get("intlRate"), 0, True),
+                    "type": row.get("type", "private").strip(),
+                    "schoolSize": row.get("schoolSize", "medium").strip(),
+                    "strengths": [s.strip() for s in row.get("strengths", "").split(",") if s.strip()] if row.get("strengths") else [],
+                    "gptSummary": row.get("gptSummary", "").strip(),
+                    "logoUrl": "",  # 暂时留空，后续可以添加
+                    "acceptanceRate": clean_numeric_value(row.get("acceptanceRate"), 0, True),
+                    "satRange": row.get("satRange", "").strip(),
+                    "actRange": row.get("actRange", "").strip(),
+                    "gpaRange": row.get("gpaRange", "").strip(),
+                    "applicationDeadline": row.get("applicationDeadline", "").strip(),
+                    "website": row.get("website", "").strip(),
+                    "supports_ed": clean_boolean_value(row.get("supports_ed")),
+                    "supports_ea": clean_boolean_value(row.get("supports_ea")),
+                    "supports_rd": clean_boolean_value(row.get("supports_rd")),
+                    "has_internship_program": clean_boolean_value(row.get("has_internship_program")),
+                    "has_research_program": clean_boolean_value(row.get("has_research_program")),
+                    "internship_support_score": clean_numeric_value(row.get("internship_support_score"), 5),
+                    "personality_types": [s.strip() for s in row.get("personality_types", "").split(",") if s.strip()] if row.get("personality_types") else [],
+                    "tags": [s.strip() for s in row.get("tags", "").split(",") if s.strip()] if row.get("tags") else []
+                }
+                
+                # 验证必需字段
+                if not university["name"]:
+                    print(f"⚠️  第{row_num}行：缺少大学名称，跳过")
+                    continue
+                
+                # 检查是否已存在（按名称）
+                existing = db.universities.find_one({"name": university["name"]})
+                if existing:
+                    if clear_existing:
+                        # 如果清空模式，直接插入
+                        universities.append(university)
+                    else:
+                        # 更新模式，更新现有记录
+                        db.universities.update_one(
+                            {"name": university["name"]}, 
+                            {"$set": university}
+                        )
+                        updated_count += 1
+                else:
+                    universities.append(university)
+                
+            except Exception as e:
+                print(f"❌ 第{row_num}行数据错误: {e}")
+                print(f"   行数据: {row}")
+                continue
         
+        # 批量插入新数据
         if universities:
-            result = db.universities.insert_many(universities)
-            print(f"成功导入 {len(result.inserted_ids)} 所大学")
-        else:
-            print("没有找到有效的大学数据")
+            try:
+                result = db.universities.insert_many(universities)
+                inserted_count = len(result.inserted_ids)
+                print(f"✅ 成功插入 {inserted_count} 所新大学")
+            except Exception as e:
+                print(f"❌ 批量插入失败: {e}")
+                # 尝试逐个插入
+                for uni in universities:
+                    try:
+                        db.universities.insert_one(uni)
+                        inserted_count += 1
+                    except Exception as e2:
+                        print(f"❌ 插入失败 {uni['name']}: {e2}")
+        
+        print(f"📊 导入完成：新增 {inserted_count} 所，更新 {updated_count} 所")
 
-def import_sample_data(db):
-    """导入示例大学数据（如果没有CSV文件）"""
-    print("导入示例大学数据...")
+def import_from_json(db, json_file_path, clear_existing=False):
+    """从JSON文件导入大学数据"""
+    if not os.path.exists(json_file_path):
+        print(f"JSON文件不存在: {json_file_path}")
+        return
     
-    # 清空现有数据
-    db.universities.delete_many({})
+    print(f"从JSON文件导入大学数据: {json_file_path}")
     
-    universities = [
-        {
-            "name": "Harvard University",
-            "country": "USA",
-            "state": "Massachusetts",
-            "rank": 1,
-            "tuition": 55000,
-            "intlRate": 0.12,
-            "type": "private",
-            "schoolSize": "large",
-            "strengths": ["business", "law", "medicine", "computer science"],
-            "tags": ["undergrad_research", "academic_competitions", "intl_employment_friendly", "student_government_support", "career_center_support"],
-            "has_internship_program": True,
-            "has_research_program": True,
-            "gptSummary": "哈佛大学是世界顶尖的私立研究型大学，以其卓越的学术声誉和丰富的资源著称。",
-            "logoUrl": "https://example.com/harvard-logo.png",
-            "acceptanceRate": 0.05,
-            "satRange": "1460-1580",
-            "actRange": "33-36",
-            "gpaRange": "3.9-4.0",
-            "applicationDeadline": "2024-01-01",
-            "website": "https://www.harvard.edu",
-            "supports_ed": True,
-            "supports_ea": False,
-            "supports_rd": True,
-            "internship_support_score": 9.5,
-            "personality_types": ["学术明星型", "全能型", "探究型"]
-        },
-        {
-            "name": "Stanford University",
-            "country": "USA",
-            "state": "California",
-            "rank": 2,
-            "tuition": 56000,
-            "intlRate": 0.15,
-            "type": "private",
-            "schoolSize": "large",
-            "strengths": ["computer science", "engineering", "business", "artificial intelligence"],
-            "tags": ["entrepreneurship_friendly", "undergrad_research", "intl_employment_friendly", "career_center_support", "student_club_support"],
-            "has_internship_program": True,
-            "has_research_program": True,
-            "gptSummary": "斯坦福大学在科技创新和创业方面享有盛誉，位于硅谷中心。",
-            "logoUrl": "https://example.com/stanford-logo.png",
-            "acceptanceRate": 0.04,
-            "satRange": "1440-1570",
-            "actRange": "32-35",
-            "gpaRange": "3.8-4.0",
-            "applicationDeadline": "2024-01-02",
-            "website": "https://www.stanford.edu",
-            "supports_ed": False,
-            "supports_ea": True,
-            "supports_rd": True,
-            "internship_support_score": 9.8,
-            "personality_types": ["实践型", "探究型", "全能型"]
-        },
-        {
-            "name": "MIT",
-            "country": "USA",
-            "state": "Massachusetts",
-            "rank": 3,
-            "tuition": 54000,
-            "intlRate": 0.10,
-            "type": "private",
-            "schoolSize": "medium",
-            "strengths": ["engineering", "computer science", "physics", "artificial intelligence"],
-            "tags": ["undergrad_research", "academic_competitions", "intl_employment_friendly", "career_center_support"],
-            "has_internship_program": True,
-            "has_research_program": True,
-            "gptSummary": "麻省理工学院在工程和科学领域世界领先，注重创新和实用研究。",
-            "logoUrl": "https://example.com/mit-logo.png",
-            "acceptanceRate": 0.07,
-            "satRange": "1500-1570",
-            "actRange": "34-36",
-            "gpaRange": "3.9-4.0",
-            "applicationDeadline": "2024-01-01",
-            "website": "https://www.mit.edu",
-            "supports_ed": False,
-            "supports_ea": True,
-            "supports_rd": True,
-            "internship_support_score": 9.2,
-            "personality_types": ["学术明星型", "探究型", "实践型"]
-        },
-        {
-            "name": "University of California, Berkeley",
-            "country": "USA",
-            "state": "California",
-            "rank": 4,
-            "tuition": 44000,
-            "intlRate": 0.15,
-            "type": "public",
-            "schoolSize": "large",
-            "strengths": ["computer science", "engineering", "business", "artificial intelligence"],
-            "tags": ["undergrad_research", "entrepreneurship_friendly", "intl_employment_friendly", "career_center_support", "community_service_opportunities"],
-            "has_internship_program": True,
-            "has_research_program": True,
-            "gptSummary": "加州大学伯克利分校在计算机科学和工程领域享有盛誉，位于科技创新的前沿。",
-            "logoUrl": "https://example.com/berkeley-logo.png",
-            "acceptanceRate": 0.15,
-            "satRange": "1330-1530",
-            "actRange": "29-35",
-            "gpaRange": "3.7-4.0",
-            "applicationDeadline": "2024-11-30",
-            "website": "https://www.berkeley.edu",
-            "supports_ed": False,
-            "supports_ea": True,
-            "supports_rd": True,
-            "internship_support_score": 8.5,
-            "personality_types": ["实践型", "探索型", "全能型"]
-        },
-        {
-            "name": "Carnegie Mellon University",
-            "country": "USA",
-            "state": "Pennsylvania",
-            "rank": 5,
-            "tuition": 58000,
-            "intlRate": 0.20,
-            "type": "private",
-            "schoolSize": "medium",
-            "strengths": ["computer science", "engineering", "artificial intelligence", "robotics"],
-            "tags": ["undergrad_research", "academic_competitions", "intl_employment_friendly", "career_center_support", "entrepreneurship_friendly"],
-            "has_internship_program": True,
-            "has_research_program": True,
-            "gptSummary": "卡内基梅隆大学在计算机科学和人工智能领域世界领先，特别在机器人技术方面有独特优势。",
-            "logoUrl": "https://example.com/cmu-logo.png",
-            "acceptanceRate": 0.15,
-            "satRange": "1460-1560",
-            "actRange": "33-35",
-            "gpaRange": "3.8-4.0",
-            "applicationDeadline": "2024-01-01",
-            "website": "https://www.cmu.edu",
-            "supports_ed": True,
-            "supports_ea": False,
-            "supports_rd": True,
-            "internship_support_score": 8.8,
-            "personality_types": ["实践型", "探究型", "学术明星型"]
-        },
-        {
-            "name": "University of Michigan",
-            "country": "USA",
-            "state": "Michigan",
-            "rank": 6,
-            "tuition": 52000,
-            "intlRate": 0.12,
-            "type": "public",
-            "schoolSize": "large",
-            "strengths": ["engineering", "computer science", "business", "medicine"],
-            "tags": ["undergrad_research", "intl_employment_friendly", "career_center_support", "student_club_support"],
-            "has_internship_program": True,
-            "has_research_program": True,
-            "gptSummary": "密歇根大学在工程和计算机科学领域实力强劲，提供丰富的实习和研究机会。",
-            "logoUrl": "https://example.com/umich-logo.png",
-            "acceptanceRate": 0.20,
-            "satRange": "1340-1530",
-            "actRange": "31-34",
-            "gpaRange": "3.6-4.0",
-            "applicationDeadline": "2024-02-01",
-            "website": "https://www.umich.edu",
-            "supports_ed": False,
-            "supports_ea": True,
-            "supports_rd": True,
-            "internship_support_score": 8.0,
-            "personality_types": ["全能型", "努力型", "探究型"]
-        },
-        {
-            "name": "Georgia Institute of Technology",
-            "country": "USA",
-            "state": "Georgia",
-            "rank": 7,
-            "tuition": 33000,
-            "intlRate": 0.08,
-            "type": "public",
-            "schoolSize": "large",
-            "strengths": ["engineering", "computer science", "industrial engineering"],
-            "tags": ["undergrad_research", "intl_employment_friendly", "career_center_support", "academic_competitions"],
-            "has_internship_program": True,
-            "has_research_program": True,
-            "gptSummary": "佐治亚理工学院在工程领域享有盛誉，特别是工业工程和计算机科学专业。",
-            "logoUrl": "https://example.com/gatech-logo.png",
-            "acceptanceRate": 0.18,
-            "satRange": "1390-1540",
-            "actRange": "31-35",
-            "gpaRange": "3.7-4.0",
-            "applicationDeadline": "2024-01-15",
-            "website": "https://www.gatech.edu",
-            "supports_ed": False,
-            "supports_ea": True,
-            "supports_rd": True,
-            "internship_support_score": 7.5,
-            "personality_types": ["努力型", "探究型", "实践型"]
-        },
-        {
-            "name": "University of Illinois Urbana-Champaign",
-            "country": "USA",
-            "state": "Illinois",
-            "rank": 8,
-            "tuition": 34000,
-            "intlRate": 0.10,
-            "type": "public",
-            "schoolSize": "large",
-            "strengths": ["engineering", "computer science", "agriculture"],
-            "tags": ["undergrad_research", "intl_employment_friendly", "career_center_support", "student_club_support"],
-            "has_internship_program": True,
-            "has_research_program": True,
-            "gptSummary": "伊利诺伊大学香槟分校在工程和计算机科学领域实力强劲，提供优质的教育和研究环境。",
-            "logoUrl": "https://example.com/uiuc-logo.png",
-            "acceptanceRate": 0.60,
-            "satRange": "1330-1500",
-            "actRange": "29-33",
-            "gpaRange": "3.5-4.0",
-            "applicationDeadline": "2024-01-05",
-            "website": "https://www.illinois.edu",
-            "supports_ed": False,
-            "supports_ea": False,
-            "supports_rd": True,
-            "internship_support_score": 7.0,
-            "personality_types": ["努力型", "潜力型", "探索型"]
-        },
-        {
-            "name": "University of Texas at Austin",
-            "country": "USA",
-            "state": "Texas",
-            "rank": 9,
-            "tuition": 38000,
-            "intlRate": 0.05,
-            "type": "public",
-            "schoolSize": "large",
-            "strengths": ["engineering", "computer science", "business"],
-            "tags": ["undergrad_research", "intl_employment_friendly", "career_center_support", "entrepreneurship_friendly"],
-            "has_internship_program": True,
-            "has_research_program": True,
-            "gptSummary": "德克萨斯大学奥斯汀分校在工程和计算机科学领域表现优异，位于科技发展迅速的奥斯汀市。",
-            "logoUrl": "https://example.com/utexas-logo.png",
-            "acceptanceRate": 0.32,
-            "satRange": "1230-1480",
-            "actRange": "26-33",
-            "gpaRange": "3.4-4.0",
-            "applicationDeadline": "2024-12-01",
-            "website": "https://www.utexas.edu",
-            "supports_ed": False,
-            "supports_ea": False,
-            "supports_rd": True,
-            "internship_support_score": 7.2,
-            "personality_types": ["努力型", "实践型", "潜力型"]
-        },
-        {
-            "name": "Purdue University",
-            "country": "USA",
-            "state": "Indiana",
-            "rank": 10,
-            "tuition": 29000,
-            "intlRate": 0.12,
-            "type": "public",
-            "schoolSize": "large",
-            "strengths": ["engineering", "aviation", "agriculture"],
-            "tags": ["undergrad_research", "intl_employment_friendly", "career_center_support", "academic_competitions"],
-            "has_internship_program": True,
-            "has_research_program": True,
-            "gptSummary": "普渡大学在工程领域享有盛誉，特别是航空工程专业，提供优质的教育和研究机会。",
-            "logoUrl": "https://example.com/purdue-logo.png",
-            "acceptanceRate": 0.67,
-            "satRange": "1190-1440",
-            "actRange": "25-32",
-            "gpaRange": "3.3-4.0",
-            "applicationDeadline": "2024-01-15",
-            "website": "https://www.purdue.edu",
-            "supports_ed": False,
-            "supports_ea": False,
-            "supports_rd": True,
-            "internship_support_score": 6.5,
-            "personality_types": ["潜力型", "努力型", "探索型"]
-        }
-    ]
+    try:
+        with open(json_file_path, 'r', encoding='utf-8') as file:
+            data = json.load(file)
+        
+        if clear_existing:
+            db.universities.delete_many({})
+            print("已清空现有数据")
+        
+        if isinstance(data, list):
+            universities = data
+        elif isinstance(data, dict) and "universities" in data:
+            universities = data["universities"]
+        else:
+            print("❌ JSON格式错误：应该是大学数组或包含universities字段的对象")
+            return
+        
+        # 处理数据
+        inserted_count = 0
+        updated_count = 0
+        
+        for uni in universities:
+            try:
+                # 检查是否已存在
+                existing = db.universities.find_one({"name": uni["name"]})
+                if existing:
+                    if clear_existing:
+                        db.universities.insert_one(uni)
+                        inserted_count += 1
+                    else:
+                        db.universities.update_one(
+                            {"name": uni["name"]}, 
+                            {"$set": uni}
+                        )
+                        updated_count += 1
+                else:
+                    db.universities.insert_one(uni)
+                    inserted_count += 1
+            except Exception as e:
+                print(f"❌ 处理大学 {uni.get('name', 'Unknown')} 失败: {e}")
+        
+        print(f"📊 JSON导入完成：新增 {inserted_count} 所，更新 {updated_count} 所")
+        
+    except Exception as e:
+        print(f"❌ JSON文件读取失败: {e}")
+
+def export_to_csv(db, output_file="universities_export.csv"):
+    """导出数据库中的大学数据到CSV文件"""
+    print(f"导出大学数据到: {output_file}")
     
-    result = db.universities.insert_many(universities)
-    print(f"成功导入 {len(result.inserted_ids)} 所大学")
+    # 创建data目录
+    data_dir = Path(__file__).parent.parent / "data"
+    data_dir.mkdir(exist_ok=True)
+    
+    output_path = data_dir / output_file
+    
+    # 获取所有大学数据
+    universities = list(db.universities.find({}, {"_id": 0}).sort("rank", 1))
+    
+    if not universities:
+        print("❌ 数据库中没有大学数据")
+        return
+    
+    # 写入CSV
+    with open(output_path, 'w', encoding='utf-8', newline='') as file:
+        if universities:
+            fieldnames = universities[0].keys()
+            writer = csv.DictWriter(file, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(universities)
+    
+    print(f"✅ 成功导出 {len(universities)} 所大学到 {output_path}")
+
+def show_database_stats(db):
+    """显示数据库统计信息"""
+    print("\n📊 数据库统计信息:")
+    print("-" * 40)
+    
+    total_universities = db.universities.count_documents({})
+    print(f"总大学数量: {total_universities}")
+    
+    if total_universities > 0:
+        # 排名分布
+        top10 = db.universities.count_documents({"rank": {"$lte": 10}})
+        top20 = db.universities.count_documents({"rank": {"$lte": 20}})
+        top50 = db.universities.count_documents({"rank": {"$lte": 50}})
+        
+        print(f"前10名: {top10} 所")
+        print(f"前20名: {top20} 所")
+        print(f"前50名: {top50} 所")
+        
+        # 类型分布
+        private_count = db.universities.count_documents({"type": "private"})
+        public_count = db.universities.count_documents({"type": "public"})
+        print(f"私立大学: {private_count} 所")
+        print(f"公立大学: {public_count} 所")
+        
+        # 规模分布
+        small_count = db.universities.count_documents({"schoolSize": "small"})
+        medium_count = db.universities.count_documents({"schoolSize": "medium"})
+        large_count = db.universities.count_documents({"schoolSize": "large"})
+        print(f"小型学校: {small_count} 所")
+        print(f"中型学校: {medium_count} 所")
+        print(f"大型学校: {large_count} 所")
+        
+        # 国家分布
+        usa_count = db.universities.count_documents({"country": "USA"})
+        print(f"美国大学: {usa_count} 所")
+        
+        # 平均学费
+        avg_tuition = db.universities.aggregate([
+            {"$group": {"_id": None, "avg": {"$avg": "$tuition"}}}
+        ]).next()["avg"]
+        print(f"平均学费: ${avg_tuition:,.0f}")
 
 def main():
     """主函数"""
-    print("开始初始化数据库...")
+    print("🚀 大学数据库管理工具")
+    print("=" * 50)
     
     # 连接数据库
-    db = connect_database()
+    try:
+        db = connect_database()
+        print("✅ 数据库连接成功")
+    except Exception as e:
+        print(f"❌ 数据库连接失败: {e}")
+        return
     
     # 创建索引
     create_indexes(db)
     
-    # 尝试从CSV文件导入数据
-    csv_file = Path(__file__).parent.parent / "data" / "universities.csv"
-    if csv_file.exists():
-        import_universities_from_csv(db, str(csv_file))
-    else:
-        print("未找到universities.csv文件，导入示例数据")
-        import_sample_data(db)
+    # 检查数据文件
+    data_dir = Path(__file__).parent.parent / "data"
+    data_dir.mkdir(exist_ok=True)
     
-    print("数据库初始化完成！")
+    # 优先检查schools.csv，然后是universities.csv
+    schools_csv = data_dir / "schools.csv"
+    universities_csv = data_dir / "universities.csv"
+    json_file = data_dir / "universities.json"
+    
+    if schools_csv.exists():
+        print(f"📁 找到学校数据文件: {schools_csv}")
+        choice = input("是否从schools.csv导入数据？(y/n，默认y): ").strip().lower()
+        if choice != 'n':
+            clear_choice = input("是否清空现有数据？(y/n，默认n): ").strip().lower()
+            clear_existing = clear_choice == 'y'
+            import_universities_from_csv(db, str(schools_csv), clear_existing)
+    elif universities_csv.exists():
+        print(f"📁 找到大学数据文件: {universities_csv}")
+        choice = input("是否从universities.csv导入数据？(y/n，默认y): ").strip().lower()
+        if choice != 'n':
+            clear_choice = input("是否清空现有数据？(y/n，默认n): ").strip().lower()
+            clear_existing = clear_choice == 'y'
+            import_universities_from_csv(db, str(universities_csv), clear_existing)
+    elif json_file.exists():
+        print(f"📁 找到JSON文件: {json_file}")
+        choice = input("是否从JSON导入数据？(y/n，默认y): ").strip().lower()
+        if choice != 'n':
+            clear_choice = input("是否清空现有数据？(y/n，默认n): ").strip().lower()
+            clear_existing = clear_choice == 'y'
+            import_from_json(db, str(json_file), clear_existing)
+    else:
+        print("📁 未找到数据文件")
+        print("请将大学数据放在 data/schools.csv 或 data/universities.csv 中")
+        return
+    
+    # 显示统计信息
+    show_database_stats(db)
+    
+    # 询问是否导出
+    export_choice = input("\n是否导出当前数据到CSV？(y/n，默认n): ").strip().lower()
+    if export_choice == 'y':
+        export_to_csv(db)
+    
+    print("\n🎉 数据库管理完成！")
 
 if __name__ == "__main__":
     main() 
