@@ -61,33 +61,74 @@ def get_db():
 
 async def create_indexes():
     """创建数据库索引"""
-    if MOCK_MODE:
-        print("🔧 Mock mode - skipping index creation")
-        return
+    try:
+        db = get_db()
+        if db is None:
+            print("⚠️  数据库未连接，跳过索引创建")
+            return
         
-    print("创建数据库索引...")
-    
-    # 用户集合索引
-    await db.users.create_index("created_at")
-    
-    # 大学集合索引 - 只索引实际存在的字段
-    await db.universities.create_index("name")
-    await db.universities.create_index("country")
-    await db.universities.create_index("rank")
-    await db.universities.create_index([("country", 1), ("rank", 1)])
-    await db.universities.create_index("strengths")
-    await db.universities.create_index("tuition")
-    await db.universities.create_index("type")
-    await db.universities.create_index("state")
-    await db.universities.create_index("intlRate")  # 使用别名
-    
-    # 评估结果索引
-    await db.parent_evaluations.create_index("user_id")
-    await db.parent_evaluations.create_index("created_at")
-    await db.student_personality_tests.create_index("user_id")
-    await db.student_personality_tests.create_index("created_at")
-    
-    print("索引创建完成")
+        print("创建数据库索引...")
+        
+        # 用户集合索引
+        try:
+            db.users.create_index("created_at")
+            print("✅ 用户索引创建完成")
+        except Exception as e:
+            print(f"⚠️  用户索引创建跳过: {e}")
+        
+        # 大学集合索引 - 先清理可能冲突的索引
+        try:
+            # 删除可能冲突的索引
+            existing_indexes = await db.universities.list_indexes().to_list(None)
+            for index in existing_indexes:
+                if index.get("name") == "name_1":
+                    try:
+                        await db.universities.drop_index("name_1")
+                        print("🔄 删除旧名称索引")
+                    except:
+                        pass
+                    break
+            
+            # 创建新索引
+            db.universities.create_index("name", unique=True)
+            db.universities.create_index("country")
+            db.universities.create_index("rank")
+            db.universities.create_index([("country", 1), ("rank", 1)])
+            db.universities.create_index("strengths")
+            db.universities.create_index("tuition")
+            db.universities.create_index("type")
+            db.universities.create_index("schoolSize")
+            db.universities.create_index("tags")
+            
+            # 新增字段索引
+            db.universities.create_index("supports_ed")
+            db.universities.create_index("supports_ea")
+            db.universities.create_index("supports_rd")
+            db.universities.create_index("internship_support_score")
+            db.universities.create_index("acceptanceRate")
+            db.universities.create_index("intlRate")
+            db.universities.create_index("state")
+            db.universities.create_index("personality_types")
+            
+            print("✅ 大学索引创建完成")
+        except Exception as e:
+            print(f"⚠️  大学索引创建跳过: {e}")
+        
+        # 评估结果索引
+        try:
+            db.parent_evaluations.create_index("user_id")
+            db.parent_evaluations.create_index("created_at")
+            db.student_personality_tests.create_index("user_id")
+            db.student_personality_tests.create_index("created_at")
+            print("✅ 评估索引创建完成")
+        except Exception as e:
+            print(f"⚠️  评估索引创建跳过: {e}")
+        
+        print("索引创建完成")
+        
+    except Exception as e:
+        print(f"❌ 索引创建失败: {e}")
+        print("⚠️  应用将继续运行，但性能可能受影响")
 
 async def close_mongo_connection():
     """关闭MongoDB连接"""

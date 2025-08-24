@@ -1,11 +1,22 @@
 from fastapi import APIRouter, HTTPException, Query
 from typing import List, Optional
 from bson import ObjectId
+from pydantic import BaseModel
 
 from models.university import University, UniversityResponse
 from db.mongo import get_db
 
 router = APIRouter()
+
+class PaginatedUniversityResponse(BaseModel):
+    """分页大学响应模型"""
+    universities: List[UniversityResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+    has_next: bool
+    has_prev: bool
 
 @router.get("/", response_model=List[UniversityResponse])
 async def get_universities(
@@ -16,11 +27,14 @@ async def get_universities(
     type: Optional[str] = Query(None, description="学校类型"),
     strength: Optional[str] = Query(None, description="优势专业"),
     search: Optional[str] = Query(None, description="搜索关键词"),
-    limit: int = Query(20, description="返回数量限制"),
-    skip: int = Query(0, description="跳过数量")
+    page: int = Query(1, description="页码，从1开始", ge=1),
+    page_size: int = Query(9, description="每页显示数量，默认9所")  # 改为9，支持3×3网格
 ):
-    """获取大学列表，支持多种筛选条件"""
+    """获取大学列表，支持多种筛选条件和分页"""
     db = get_db()
+    
+    # 计算skip值
+    skip = (page - 1) * page_size
     
     # 构建查询条件
     filter_conditions = {}
@@ -51,9 +65,102 @@ async def get_universities(
             {"strengths": {"$regex": search, "$options": "i"}}
         ]
     
-    # 执行查询
-    cursor = db.universities.find(filter_conditions).skip(skip).limit(limit)
-    universities = await cursor.to_list(length=limit)
+    # 执行分页查询
+    try:
+        cursor = db.universities.find(filter_conditions).skip(skip).limit(page_size).sort("rank", 1)
+        universities = await cursor.to_list(length=page_size)
+    except Exception as e:
+        print(f"查询失败: {e}")
+        universities = []
+    
+    # 转换为响应格式 - 保持向后兼容，返回数组
+    result = []
+    for uni in universities:
+        result.append(UniversityResponse(
+            id=str(uni["_id"]),
+            name=uni["name"],
+            country=uni["country"],
+            state=uni["state"],
+            rank=uni["rank"],
+            tuition=uni["tuition"],
+            intl_rate=uni["intlRate"],
+            type=uni["type"],
+            strengths=uni["strengths"],
+            gpt_summary=uni["gptSummary"],
+            logo_url=uni.get("logoUrl")
+        ))
+    
+    return result
+
+@router.get("/paginated", response_model=PaginatedUniversityResponse)
+async def get_universities_paginated(
+    country: Optional[str] = Query(None, description="国家筛选"),
+    rank_min: Optional[int] = Query(None, description="最低排名"),
+    rank_max: Optional[int] = Query(None, description="最高排名"),
+    tuition_max: Optional[int] = Query(None, description="最高学费"),
+    type: Optional[str] = Query(None, description="学校类型"),
+    strength: Optional[str] = Query(None, description="优势专业"),
+    search: Optional[str] = Query(None, description="搜索关键词"),
+    page: int = Query(1, description="页码，从1开始", ge=1),
+    page_size: int = Query(9, description="每页显示数量，默认9所")
+):
+    """获取大学列表（分页版本），支持多种筛选条件和分页信息"""
+    db = get_db()
+    
+    # 计算skip值
+    skip = (page - 1) * page_size
+    
+    # 构建查询条件
+    filter_conditions = {}
+    
+    if country:
+        filter_conditions["country"] = country
+    
+    if rank_min is not None or rank_max is not None:
+        rank_filter = {}
+        if rank_min is not None:
+            rank_filter["$gte"] = rank_min
+        if rank_max is not None:
+            rank_filter["$lte"] = rank_max
+        filter_conditions["rank"] = rank_filter
+    
+    if tuition_max:
+        filter_conditions["tuition"] = {"$lte": tuition_max}
+    
+    if type:
+        filter_conditions["type"] = type
+    
+    if strength:
+        filter_conditions["strengths"] = {"$in": [strength]}
+    
+    if search:
+        filter_conditions["$or"] = [
+            {"name": {"$regex": search, "$options": "i"}},
+            {"strengths": {"$regex": search, "$options": "i"}}
+        ]
+    
+    # 获取总数
+    try:
+        if hasattr(db.universities, 'count_documents'):
+            total = await db.universities.count_documents(filter_conditions)
+        else:
+            total = 50  # 默认值
+    except Exception as e:
+        print(f"获取总数失败: {e}")
+        total = 50  # 默认值
+    
+    # 执行分页查询
+    try:
+        cursor = db.universities.find(filter_conditions).skip(skip).limit(page_size).sort("rank", 1)
+        universities = await cursor.to_list(length=page_size)
+    except Exception as e:
+        print(f"查询失败: {e}")
+        universities = []
+    
+    # 计算分页信息
+    total_pages = (total + page_size - 1) // page_size
+    has_next = page < total_pages
+    has_prev = page > 1
     
     # 转换为响应格式
     result = []
@@ -72,7 +179,15 @@ async def get_universities(
             logo_url=uni.get("logoUrl")
         ))
     
-    return result
+    return PaginatedUniversityResponse(
+        universities=result,
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages,
+        has_next=has_next,
+        has_prev=has_prev
+    )
 
 @router.get("/{university_id}", response_model=UniversityResponse)
 async def get_university(university_id: str):
@@ -115,5 +230,19 @@ async def get_strengths():
     """获取所有优势专业列表"""
     db = get_db()
     
-    strengths = await db.universities.distinct("strengths")
-    return {"strengths": sorted(strengths)} 
+    try:
+        # 获取所有大学的strengths字段
+        universities = await db.universities.find({}, {"strengths": 1}).to_list(None)
+        
+        # 提取所有strengths并去重
+        all_strengths = set()
+        for uni in universities:
+            if "strengths" in uni and isinstance(uni["strengths"], list):
+                for strength in uni["strengths"]:
+                    if strength and isinstance(strength, str):
+                        all_strengths.add(strength.strip())
+        
+        return {"strengths": sorted(list(all_strengths))}
+    except Exception as e:
+        print(f"获取strengths失败: {e}")
+        return {"strengths": []} 
