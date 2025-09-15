@@ -60,8 +60,8 @@ def create_indexes(db):
         db.universities.create_index("supports_ea")
         db.universities.create_index("supports_rd")
         db.universities.create_index("internship_support_score")
-        db.universities.create_index("acceptance_rate")
-        db.universities.create_index("intl_rate")
+        db.universities.create_index("acceptanceRate")
+        db.universities.create_index("intlRate")
         db.universities.create_index("state")
         db.universities.create_index("personality_types")
         
@@ -175,18 +175,18 @@ def import_universities_from_csv(db, csv_file_path, clear_existing=False):
                 # 调试：显示清洗后的关键字段值
                 if row_num <= 3:  # 只显示前3行
                     print(f"🔧 第{row_num}行清洗后数据:")
-                    print(f"   acceptance_rate: {university['acceptance_rate']}")
-                    print(f"   sat_range: '{university['sat_range']}'")
-                    print(f"   act_range: '{university['act_range']}'")
-                    print(f"   gpa_range: '{university['gpa_range']}'")
-                    print(f"   application_deadline: '{university['application_deadline']}'")
+                    print(f"   acceptanceRate: {university['acceptanceRate']}")
+                    print(f"   satRange: '{university['satRange']}'")
+                    print(f"   actRange: '{university['actRange']}'")
+                    print(f"   gpaRange: '{university['gpaRange']}'")
+                    print(f"   applicationDeadline: '{university['applicationDeadline']}'")
                     print(f"   supports_ed: {university['supports_ed']}")
                     print(f"   supports_ea: {university['supports_ea']}")
                     print(f"   supports_rd: {university['supports_rd']}")
                     print(f"   has_internship_program: {university['has_internship_program']}")
                     print(f"   has_research_program: {university['has_research_program']}")
                     print(f"   internship_support_score: {university['internship_support_score']}")
-                    print(f"   school_size: '{university['school_size']}'")
+                    print(f"   schoolSize: '{university['schoolSize']}'")
                     print(f"   website: '{university['website']}'")
                     print("   ---")
                 
@@ -339,9 +339,9 @@ def show_database_stats(db):
         print(f"公立大学: {public_count} 所")
         
         # 规模分布
-        small_count = db.universities.count_documents({"school_size": "small"})
-        medium_count = db.universities.count_documents({"school_size": "medium"})
-        large_count = db.universities.count_documents({"school_size": "large"})
+        small_count = db.universities.count_documents({"schoolSize": "small"})
+        medium_count = db.universities.count_documents({"schoolSize": "medium"})
+        large_count = db.universities.count_documents({"schoolSize": "large"})
         print(f"小型学校: {small_count} 所")
         print(f"中型学校: {medium_count} 所")
         print(f"大型学校: {large_count} 所")
