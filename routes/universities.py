@@ -83,11 +83,11 @@ async def get_universities(
             state=uni["state"],
             rank=uni["rank"],
             tuition=uni["tuition"],
-            intl_rate=uni["intlRate"],
+            intl_rate=uni.get("intl_rate", 0),
             type=uni["type"],
-            strengths=uni["strengths"],
-            gpt_summary=uni["gptSummary"],
-            logo_url=uni.get("logoUrl")
+            strengths=uni.get("strengths", []),
+            gpt_summary=uni.get("gpt_summary", ""),
+            logo_url=uni.get("logo_url", "")
         ))
     
     return result
@@ -172,11 +172,11 @@ async def get_universities_paginated(
             state=uni["state"],
             rank=uni["rank"],
             tuition=uni["tuition"],
-            intl_rate=uni["intlRate"],
+            intl_rate=uni.get("intl_rate", 0),
             type=uni["type"],
-            strengths=uni["strengths"],
-            gpt_summary=uni["gptSummary"],
-            logo_url=uni.get("logoUrl")
+            strengths=uni.get("strengths", []),
+            gpt_summary=uni.get("gpt_summary", ""),
+            logo_url=uni.get("logo_url", "")
         ))
     
     return PaginatedUniversityResponse(
@@ -210,14 +210,14 @@ async def get_university(university_id: str):
         state=university["state"],
         rank=university["rank"],
         tuition=university["tuition"],
-        intl_rate=university["intlRate"],
+        intl_rate=university.get("intl_rate", 0),
         type=university["type"],
-        strengths=university["strengths"],
-        gpt_summary=university["gptSummary"],
-        logo_url=university.get("logoUrl"),
+        strengths=university.get("strengths", []),
+        gpt_summary=university.get("gpt_summary", ""),
+        logo_url=university.get("logo_url", ""),
         location=university.get("location"),
         personality_types=university.get("personality_types"),
-        school_size=university.get("schoolSize"),
+        school_size=university.get("school_size", "medium"),
         description=university.get("description"),
         supports_ed=university.get("supports_ed"),
         supports_ea=university.get("supports_ea"),
