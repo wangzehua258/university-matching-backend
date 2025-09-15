@@ -111,6 +111,8 @@ Thumbs.db
 
 # MongoDB data
 data/
+!data/*.csv
+!data/README.md
 
 # Logs
 *.log 
