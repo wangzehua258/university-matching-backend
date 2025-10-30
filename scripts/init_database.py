@@ -81,6 +81,35 @@ def create_indexes(db):
     
     print("索引创建完成")
 
+    # 国际大学集合索引
+    try:
+        # AU
+        db.university_au.create_index("name", unique=True)
+        db.university_au.create_index("city")
+        db.university_au.create_index("rank")
+        db.university_au.create_index("work_integrated_learning")
+        db.university_au.create_index("group_of_eight")
+        db.university_au.create_index("strengths")
+        db.university_au.create_index("tags")
+        # UK
+        db.university_uk.create_index("name", unique=True)
+        db.university_uk.create_index("city")
+        db.university_uk.create_index("rank")
+        db.university_uk.create_index("foundation_available")
+        db.university_uk.create_index("placement_year_available")
+        db.university_uk.create_index("russell_group")
+        db.university_uk.create_index("strengths")
+        db.university_uk.create_index("tags")
+        # SG
+        db.university_sg.create_index("name", unique=True)
+        db.university_sg.create_index("rank")
+        db.university_sg.create_index("tuition_grant_available")
+        db.university_sg.create_index("strengths")
+        db.university_sg.create_index("tags")
+        print("✅ 国际大学索引创建完成")
+    except Exception as e:
+        print(f"⚠️  国际大学索引创建跳过: {e}")
+
 def clean_boolean_value(value):
     """清理布尔值"""
     if isinstance(value, str):
@@ -234,6 +263,89 @@ def import_universities_from_csv(db, csv_file_path, clear_existing=False):
         
         print(f"📊 导入完成：新增 {inserted_count} 所，更新 {updated_count} 所")
 
+
+def _read_xlsx_rows(file_path, expected_headers):
+    try:
+        import openpyxl
+    except Exception as e:
+        raise RuntimeError("需要安装 openpyxl 以读取Excel文件: pip install openpyxl") from e
+    wb = openpyxl.load_workbook(file_path)
+    ws = wb.active
+    headers = [str(c.value).strip() if c.value is not None else "" for c in next(ws.iter_rows(min_row=1, max_row=1))[0:len(expected_headers)]]
+    if [h.strip() for h in headers] != expected_headers:
+        raise RuntimeError(f"Excel表头不匹配，期望: {expected_headers}，实际: {headers}")
+    for row in ws.iter_rows(min_row=2):
+        values = [c.value for c in row[:len(expected_headers)]]
+        yield dict(zip(expected_headers, values))
+
+
+def import_au_from_excel(db, file_path, clear_existing=False):
+    expected = [
+        "name","country","city","rank","tuition_local","currency","tuition_usd","study_length_years",
+        "intakes","english_requirements","requires_english_test","group_of_eight","work_integrated_learning",
+        "placement_rate","post_study_visa_years","scholarship_available","strengths","tags","intlRate","website"
+    ]
+    if clear_existing:
+        db.university_au.delete_many({})
+    inserted, updated = 0, 0
+    for row in _read_xlsx_rows(file_path, expected):
+        row["strengths"] = [s.strip() for s in (row.get("strengths") or "").split(",") if s and str(s).strip()]
+        row["tags"] = [s.strip() for s in (row.get("tags") or "").split(",") if s and str(s).strip()]
+        existing = db.university_au.find_one({"name": row["name"]})
+        if existing and not clear_existing:
+            db.university_au.update_one({"_id": existing["_id"]}, {"$set": row})
+            updated += 1
+        else:
+            db.university_au.insert_one(row)
+            inserted += 1
+    print(f"✅ AU 导入完成：新增 {inserted}，更新 {updated}")
+
+
+def import_uk_from_excel(db, file_path, clear_existing=False):
+    expected = [
+        "name","country","city","rank","tuition_local","currency","tuition_usd","study_length_years",
+        "ucas_deadline_type","typical_offer_alevel","typical_offer_ib","foundation_available","russell_group",
+        "placement_year_available","interview_required","admissions_tests","personal_statement_weight","strengths",
+        "tags","intlRate","website","scholarship_available"
+    ]
+    if clear_existing:
+        db.university_uk.delete_many({})
+    inserted, updated = 0, 0
+    for row in _read_xlsx_rows(file_path, expected):
+        row["strengths"] = [s.strip() for s in (row.get("strengths") or "").split(",") if s and str(s).strip()]
+        row["tags"] = [s.strip() for s in (row.get("tags") or "").split(",") if s and str(s).strip()]
+        existing = db.university_uk.find_one({"name": row["name"]})
+        if existing and not clear_existing:
+            db.university_uk.update_one({"_id": existing["_id"]}, {"$set": row})
+            updated += 1
+        else:
+            db.university_uk.insert_one(row)
+            inserted += 1
+    print(f"✅ UK 导入完成：新增 {inserted}，更新 {updated}")
+
+
+def import_sg_from_excel(db, file_path, clear_existing=False):
+    expected = [
+        "name","country","city","rank","tuition_local","currency","tuition_usd","study_length_years",
+        "tuition_grant_available","tuition_grant_bond_years","interview_required","essay_or_portfolio_required",
+        "coop_or_internship_required","industry_links_score","exchange_opportunities_score","strengths","tags",
+        "intlRate","website","scholarship_available"
+    ]
+    if clear_existing:
+        db.university_sg.delete_many({})
+    inserted, updated = 0, 0
+    for row in _read_xlsx_rows(file_path, expected):
+        row["strengths"] = [s.strip() for s in (row.get("strengths") or "").split(",") if s and str(s).strip()]
+        row["tags"] = [s.strip() for s in (row.get("tags") or "").split(",") if s and str(s).strip()]
+        existing = db.university_sg.find_one({"name": row["name"]})
+        if existing and not clear_existing:
+            db.university_sg.update_one({"_id": existing["_id"]}, {"$set": row})
+            updated += 1
+        else:
+            db.university_sg.insert_one(row)
+            inserted += 1
+    print(f"✅ SG 导入完成：新增 {inserted}，更新 {updated}")
+
 def import_from_json(db, json_file_path, clear_existing=False):
     """从JSON文件导入大学数据"""
     if not os.path.exists(json_file_path):
@@ -372,7 +484,7 @@ def main():
     # 创建索引
     create_indexes(db)
     
-    # 检查数据文件
+    # 检查数据文件（美国/默认）
     data_dir = Path(__file__).parent.parent / "data"
     data_dir.mkdir(exist_ok=True)
     
@@ -402,13 +514,63 @@ def main():
             clear_choice = input("是否清空现有数据？(y/n，默认n): ").strip().lower()
             clear_existing = clear_choice == 'y'
             import_from_json(db, str(json_file), clear_existing)
-    else:
-        print("📁 未找到数据文件")
-        print("请将大学数据放在 data/schools.csv 或 data/universities.csv 中")
-        return
+    # 国际数据（AU/UK/SG） - 优先读取Excel
+    intl_dir = data_dir / "international"
+    intl_dir.mkdir(exist_ok=True)
+
+    au_xlsx = intl_dir / "AUSTRALIA.xlsx"
+    uk_xlsx = intl_dir / "UK.xlsx"
+    sg_xlsx = intl_dir / "SINGAPORE.xlsx"
+
+    # 如无Excel，尝试使用已有CSV结构生成Excel样例
+    def ensure_sample_excels():
+        try:
+            import openpyxl
+        except Exception:
+            print("⚠️ 未安装openpyxl，跳过生成Excel样例。可安装后重试: pip install openpyxl")
+            return
+        if not au_xlsx.exists():
+            wb = openpyxl.Workbook(); ws = wb.active
+            ws.append(["name","country","city","rank","tuition_local","currency","tuition_usd","study_length_years","intakes","english_requirements","requires_english_test","group_of_eight","work_integrated_learning","placement_rate","post_study_visa_years","scholarship_available","strengths","tags","intlRate","website"])
+            ws.append(["University of Melbourne","Australia","Melbourne",32,48000,"AUD",32000,3.0,"Feb, Jul","IELTS 6.5 no<6.0",True,True,True,0.85,4.0,True,"CS,Engineering,Business","Go8,WIL",0.35,"https://www.unimelb.edu.au"])  # 示例
+            wb.save(au_xlsx)
+            print(f"🧪 已生成样例: {au_xlsx}")
+        if not uk_xlsx.exists():
+            wb = openpyxl.Workbook(); ws = wb.active
+            ws.append(["name","country","city","rank","tuition_local","currency","tuition_usd","study_length_years","ucas_deadline_type","typical_offer_alevel","typical_offer_ib","foundation_available","russell_group","placement_year_available","interview_required","admissions_tests","personal_statement_weight","strengths","tags","intlRate","website","scholarship_available"])
+            ws.append(["University of Manchester","United Kingdom","Manchester",52,28000,"GBP",35000,3.0,"Main(1/31)","AAA","36-38 HL 666",True,True,True,False,"TMUA",7,"CS,Engineering,Business","Russell,Placement",0.30,"https://www.manchester.ac.uk",True])
+            wb.save(uk_xlsx)
+            print(f"🧪 已生成样例: {uk_xlsx}")
+        if not sg_xlsx.exists():
+            wb = openpyxl.Workbook(); ws = wb.active
+            ws.append(["name","country","city","rank","tuition_local","currency","tuition_usd","study_length_years","tuition_grant_available","tuition_grant_bond_years","interview_required","essay_or_portfolio_required","coop_or_internship_required","industry_links_score","exchange_opportunities_score","strengths","tags","intlRate","website","scholarship_available"])
+            ws.append(["National University of Singapore","Singapore","Singapore",11,45000,"SGD",33000,4.0,True,3,True,True,True,9,8,"CS,Engineering,Business","Coop,Exchange",0.28,"https://www.nus.edu.sg",True])
+            wb.save(sg_xlsx)
+            print(f"🧪 已生成样例: {sg_xlsx}")
+
+    ensure_sample_excels()
+
+    if au_xlsx.exists():
+        choice = input("是否导入澳大利亚数据（AUSTRALIA.xlsx）？(y/n，默认y): ").strip().lower()
+        if choice != 'n':
+            clear_choice = input("是否清空AU现有数据？(y/n，默认n): ").strip().lower()
+            import_au_from_excel(db, str(au_xlsx), clear_choice == 'y')
+    if uk_xlsx.exists():
+        choice = input("是否导入英国数据（UK.xlsx）？(y/n，默认y): ").strip().lower()
+        if choice != 'n':
+            clear_choice = input("是否清空UK现有数据？(y/n，默认n): ").strip().lower()
+            import_uk_from_excel(db, str(uk_xlsx), clear_choice == 'y')
+    if sg_xlsx.exists():
+        choice = input("是否导入新加坡数据（SINGAPORE.xlsx）？(y/n，默认y): ").strip().lower()
+        if choice != 'n':
+            clear_choice = input("是否清空SG现有数据？(y/n，默认n): ").strip().lower()
+            import_sg_from_excel(db, str(sg_xlsx), clear_choice == 'y')
     
-    # 显示统计信息
-    show_database_stats(db)
+    # 显示统计信息（仅美国数据集合）
+    try:
+        show_database_stats(db)
+    except Exception:
+        pass
     
     # 询问是否导出
     export_choice = input("\n是否导出当前数据到CSV？(y/n，默认n): ").strip().lower()

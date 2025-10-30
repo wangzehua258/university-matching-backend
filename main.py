@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from routes import evals, universities, users
+from routes import universities_international
 from db.mongo import connect_to_mongo, close_mongo_connection
 
 @asynccontextmanager
@@ -57,6 +58,11 @@ app.add_middleware(
 app.include_router(evals.router, prefix="/api/evals", tags=["评估"])
 app.include_router(universities.router, prefix="/api/universities", tags=["大学"])
 app.include_router(users.router, prefix="/api/users", tags=["用户"])
+app.include_router(universities_international.router, prefix="/api/international", tags=["国际大学"])
+
+@app.get("/api/international/ping")
+async def international_ping():
+    return {"ok": True}
 
 @app.get("/")
 async def root():

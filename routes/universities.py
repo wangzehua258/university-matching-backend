@@ -7,6 +7,81 @@ from models.university import University, UniversityResponse
 from db.mongo import get_db
 
 router = APIRouter()
+def _parse_list_or_csv(value):
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str):
+        return [s.strip() for s in value.split(',') if s.strip()]
+    return []
+
+@router.get("/international/au")
+async def list_international_au(page: int = 1, page_size: int = 50):
+    db = get_db()
+    cursor = db.university_au.find({}).skip((page-1)*page_size).limit(page_size).sort("rank", 1)
+    docs = await cursor.to_list(length=page_size)
+    for d in docs:
+        d["_id"] = str(d["_id"])  # stringify id
+        d["strengths"] = _parse_list_or_csv(d.get("strengths", []))
+        d["tags"] = _parse_list_or_csv(d.get("tags", []))
+    return docs
+
+@router.get("/international/au/{id}")
+async def get_international_au(id: str):
+    from bson import ObjectId
+    db = get_db()
+    doc = await db.university_au.find_one({"_id": ObjectId(id)})
+    if not doc:
+        raise HTTPException(status_code=404, detail="未找到大学")
+    doc["_id"] = str(doc["_id"])  # stringify id
+    doc["strengths"] = _parse_list_or_csv(doc.get("strengths", []))
+    doc["tags"] = _parse_list_or_csv(doc.get("tags", []))
+    return doc
+
+@router.get("/international/uk")
+async def list_international_uk(page: int = 1, page_size: int = 50):
+    db = get_db()
+    cursor = db.university_uk.find({}).skip((page-1)*page_size).limit(page_size).sort("rank", 1)
+    docs = await cursor.to_list(length=page_size)
+    for d in docs:
+        d["_id"] = str(d["_id"])  # stringify id
+        d["strengths"] = _parse_list_or_csv(d.get("strengths", []))
+        d["tags"] = _parse_list_or_csv(d.get("tags", []))
+    return docs
+
+@router.get("/international/uk/{id}")
+async def get_international_uk(id: str):
+    from bson import ObjectId
+    db = get_db()
+    doc = await db.university_uk.find_one({"_id": ObjectId(id)})
+    if not doc:
+        raise HTTPException(status_code=404, detail="未找到大学")
+    doc["_id"] = str(doc["_id"])  # stringify id
+    doc["strengths"] = _parse_list_or_csv(doc.get("strengths", []))
+    doc["tags"] = _parse_list_or_csv(doc.get("tags", []))
+    return doc
+
+@router.get("/international/sg")
+async def list_international_sg(page: int = 1, page_size: int = 50):
+    db = get_db()
+    cursor = db.university_sg.find({}).skip((page-1)*page_size).limit(page_size).sort("rank", 1)
+    docs = await cursor.to_list(length=page_size)
+    for d in docs:
+        d["_id"] = str(d["_id"])  # stringify id
+        d["strengths"] = _parse_list_or_csv(d.get("strengths", []))
+        d["tags"] = _parse_list_or_csv(d.get("tags", []))
+    return docs
+
+@router.get("/international/sg/{id}")
+async def get_international_sg(id: str):
+    from bson import ObjectId
+    db = get_db()
+    doc = await db.university_sg.find_one({"_id": ObjectId(id)})
+    if not doc:
+        raise HTTPException(status_code=404, detail="未找到大学")
+    doc["_id"] = str(doc["_id"])  # stringify id
+    doc["strengths"] = _parse_list_or_csv(doc.get("strengths", []))
+    doc["tags"] = _parse_list_or_csv(doc.get("tags", []))
+    return doc
 
 class PaginatedUniversityResponse(BaseModel):
     """分页大学响应模型"""
