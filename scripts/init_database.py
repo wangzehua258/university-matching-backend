@@ -528,7 +528,7 @@ def main():
             import openpyxl
         except Exception:
             print("⚠️ 未安装openpyxl，跳过生成Excel样例。可安装后重试: pip install openpyxl")
-            return
+        return
         if not au_xlsx.exists():
             wb = openpyxl.Workbook(); ws = wb.active
             ws.append(["name","country","city","rank","tuition_local","currency","tuition_usd","study_length_years","intakes","english_requirements","requires_english_test","group_of_eight","work_integrated_learning","placement_rate","post_study_visa_years","scholarship_available","strengths","tags","intlRate","website"])
@@ -568,7 +568,7 @@ def main():
     
     # 显示统计信息（仅美国数据集合）
     try:
-        show_database_stats(db)
+    show_database_stats(db)
     except Exception:
         pass
     

@@ -93,6 +93,57 @@ class PaginatedUniversityResponse(BaseModel):
     has_next: bool
     has_prev: bool
 
+# --- International collections compatibility layer (AU/UK/SG) ---
+INTERNATIONAL_COUNTRIES = {"Australia", "United Kingdom", "Singapore"}
+
+def _parse_list_or_csv(value):
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str):
+        return [s.strip() for s in value.split(',') if s.strip()]
+    return []
+
+async def _query_international(country: str, page: int, page_size: int, filter_conditions: dict):
+    """Query AU/UK/SG collections and map to UniversityResponse compatible dicts."""
+    db = get_db()
+    coll_name = {
+        "Australia": "university_au",
+        "United Kingdom": "university_uk",
+        "Singapore": "university_sg",
+    }[country]
+    # Remove filters not applicable in intl collections except rank and strength
+    intl_filter = {}
+    if "rank" in filter_conditions:
+        intl_filter["rank"] = filter_conditions["rank"]
+    if "strengths" in filter_conditions:
+        intl_filter["strengths"] = filter_conditions["strengths"]
+    cursor = getattr(db, coll_name).find(intl_filter).skip((page - 1) * page_size).limit(page_size).sort("rank", 1)
+    docs = await cursor.to_list(length=page_size)
+    results = []
+    for d in docs:
+        strengths = _parse_list_or_csv(d.get("strengths", []))
+        results.append({
+            "id": str(d.get("_id")),
+            "name": d.get("name"),
+            "country": d.get("country", country),
+            "state": d.get("city", ""),
+            "rank": d.get("rank", 9999),
+            "tuition": int(d.get("tuition_usd", 0) or 0),
+            "intl_rate": float(d.get("intlRate", 0) or 0.0),
+            # reuse "type" to carry currency to avoid breaking UI
+            "type": d.get("currency", "public"),
+            "strengths": strengths,
+            # reuse gpt_summary slot to show website as placeholder
+            "gpt_summary": d.get("website", ""),
+            "logo_url": None,
+        })
+    # Count total (fallback if not supported)
+    try:
+        total = await getattr(db, coll_name).count_documents(intl_filter)
+    except Exception:
+        total = len(results)
+    return results, total
+
 @router.get("/", response_model=List[UniversityResponse])
 async def get_universities(
     country: Optional[str] = Query(None, description="国家筛选"),
@@ -139,6 +190,10 @@ async def get_universities(
             {"name": {"$regex": search, "$options": "i"}},
             {"strengths": {"$regex": search, "$options": "i"}}
         ]
+    # International collections handling
+    if country in INTERNATIONAL_COUNTRIES:
+        intl_results, _ = await _query_international(country, page, page_size, filter_conditions)
+        return [UniversityResponse(**r) for r in intl_results]
     
     # 执行分页查询
     try:
@@ -213,6 +268,21 @@ async def get_universities_paginated(
             {"name": {"$regex": search, "$options": "i"}},
             {"strengths": {"$regex": search, "$options": "i"}}
         ]
+    # International collections handling
+    if country in INTERNATIONAL_COUNTRIES:
+        intl_results, total = await _query_international(country, page, page_size, filter_conditions)
+        total_pages = (total + page_size - 1) // page_size
+        has_next = page < total_pages
+        has_prev = page > 1
+        return PaginatedUniversityResponse(
+            universities=[UniversityResponse(**r) for r in intl_results],
+            total=total,
+            page=page,
+            page_size=page_size,
+            total_pages=total_pages,
+            has_next=has_next,
+            has_prev=has_prev
+        )
     
     # 获取总数
     try:

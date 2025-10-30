@@ -139,3 +139,4 @@ async def get_sg_university(id: str):
     return UniversitySGResponse(id=str(d["_id"]), **{**d, "strengths": _parse_strengths(d.get("strengths", [])), "tags": _parse_strengths(d.get("tags", []))})
 
 
+

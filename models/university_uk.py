@@ -53,3 +53,4 @@ class UniversityUKResponse(BaseModel):
     scholarship_available: bool
 
 
+

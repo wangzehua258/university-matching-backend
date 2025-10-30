@@ -8,7 +8,7 @@ from .personality import StudentTest, StudentTestCreate, StudentTestResponse
 
 __all__ = [
     "User", "UserCreate", "UserResponse",
-    "University", "UniversityResponse",
+    "University", "UniversityResponse", 
     "UniversityAU", "UniversityAUResponse",
     "UniversityUK", "UniversityUKResponse",
     "UniversitySG", "UniversitySGResponse",

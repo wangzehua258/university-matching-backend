@@ -49,3 +49,4 @@ class UniversitySGResponse(BaseModel):
     scholarship_available: bool
 
 
+

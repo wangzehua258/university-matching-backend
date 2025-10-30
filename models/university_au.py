@@ -49,3 +49,4 @@ class UniversityAUResponse(BaseModel):
     website: str
 
 
+
