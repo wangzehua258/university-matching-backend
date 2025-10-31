@@ -26,18 +26,25 @@ class ParentEvaluationInput(BaseModel):
     internship_important: Optional[bool] = Field(None, description="是否重视实习机会")
     region_preference: Optional[str] = Field(None, description="地理偏好（如：California、东海岸等）")
 
-    # Australia 专用
+    # Australia 专用（16题版本）
     academic_band: Optional[str] = None
     interests: Optional[List[str]] = None
+    reputation_vs_value: Optional[str] = None  # Q3: 名气/性价比（权重调节）
     budget_usd: Optional[int] = None
+    hard_budget_must_within: Optional[bool] = None
+    study_length_preference: Optional[str] = None  # Q11: 学制偏好
+    intake_preference: Optional[str] = None  # Q12: 入学时间偏好
     wil_preference: Optional[str] = None
-    go8_preference: Optional[str] = None
     psw_importance: Optional[str] = None
-    english_readiness: Optional[str] = None
     city_preferences: Optional[List[str]] = None
     intl_community_importance: Optional[str] = None
+    english_readiness: Optional[str] = None
+    accept_language_course: Optional[bool] = None  # Q14: 是否接受语言/过渡课
     hard_english_required_exclude: Optional[bool] = None
-    hard_budget_must_within: Optional[bool] = None
+    go8_preference: Optional[str] = None
+    scholarship_importance: Optional[str] = None
+    career_focus: Optional[str] = None  # Q15: 就业口碑/带实习标签（权重调节）
+    main_concern: Optional[str] = None  # Q16: 最担心点（用于解释排序，不单独计分）
 
     # United Kingdom 专用
     ucas_route: Optional[str] = None
@@ -74,6 +81,7 @@ class ParentEvaluation(BaseModel):
     ea_suggestions: List[str] = Field(default_factory=list)
     rd_suggestions: List[str] = Field(default_factory=list)
     gpt_summary: str = Field(..., description="GPT生成的评估总结")
+    fallback_info: Optional[Dict[str, Any]] = Field(None, description="回退策略信息（仅AU）")  # 新增字段
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     class Config:

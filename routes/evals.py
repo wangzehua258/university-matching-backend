@@ -31,11 +31,14 @@ async def create_parent_evaluation(eval_data: ParentEvaluationCreate):
         recommended_school_ids: list[str] = []
         # 分国家处理 - AU/UK/SG 将走各自逻辑文件；USA 维持旧逻辑
         country = eval_data.input.target_country
+        print(f"🔍 DEBUG: country = '{country}', type = {type(country)}")
+        fallback_info = None  # 仅AU使用
         if country == "Australia":
+            print("✅ 进入Australia分支 - 开始处理AU评估")
             # 从 AU 集合取原始数据
             au_docs = await db.university_au.find({"country": "Australia"}).to_list(length=None)
-            # 打分排序
-            scored = apply_au_filters_and_score(eval_data.input.dict(), au_docs)
+            # 打分排序（新版本支持回退策略）
+            scored, fallback_info = apply_au_filters_and_score(eval_data.input.dict(), au_docs, enable_fallback=True)
             # 取前若干（例如 20）
             top = scored[:20]
             recommended_school_ids = [s["id"] for s in top]
@@ -69,7 +72,8 @@ async def create_parent_evaluation(eval_data: ParentEvaluationCreate):
             user_id=eval_data.user_id,
             input=eval_data.input,
             recommended_schools=recommended_school_ids,
-            gpt_summary=gpt_summary
+            gpt_summary=gpt_summary,
+            fallback_info=fallback_info if country == "Australia" else None  # 保存回退信息
         )
         
         # Convert to dict without the id field to avoid _id: null issue
@@ -177,30 +181,85 @@ async def create_parent_evaluation(eval_data: ParentEvaluationCreate):
                     "website": school.get("website", "")
                 })
         
-        # 分类申请策略
-        ed_suggestion, ea_suggestions, rd_suggestions = classify_applications(recommended_schools)
-        
-        # 不调用 OpenAI， student_profile/strategy 用占位信息
-        student_profile = {
-            "summary": "",
-        }
-        strategy = {
-            "plan": "",
-            "count": len(recommended_schools),
-        }
-        
-        response_data = {
-            "id": str(evaluation.id),
-            "user_id": str(evaluation.user_id),
-            "studentProfile": student_profile,
-            "recommendedSchools": recommended_schools,
-            "edSuggestion": ed_suggestion,
-            "eaSuggestions": ea_suggestions,
-            "rdSuggestions": rd_suggestions,
-            "strategy": strategy,
-            "gptSummary": gpt_summary,
-            "created_at": evaluation.created_at
-        }
+        # 根据国家构建不同的返回结构
+        print(f"🔍 当前国家: {country}, 类型: {type(country)}")
+        if country == "Australia":
+            print("✅ 进入澳洲专用分支")
+            # 澳洲专用结构：生成每所学校的详细解释
+            from gpt.au_evaluation import generate_school_explanations
+            input_dict = eval_data.input.dict()
+            
+            # 创建ID到score的映射
+            score_map = {s["id"]: s.get("score", 0) for s in top if "id" in s}
+            
+            schools_with_explanations = []
+            for school in recommended_schools:
+                school_id = school["id"]
+                school_detail = next((s for s in schools if str(s.get("_id")) == school_id), None)
+                
+                if school_detail:
+                    explanation = generate_school_explanations(school_detail, input_dict)
+                    schools_with_explanations.append({
+                        **school,
+                        "explanation": explanation,
+                        "matchScore": score_map.get(school_id, 0),
+                    })
+                else:
+                    schools_with_explanations.append({
+                        **school,
+                        "explanation": [],
+                        "matchScore": score_map.get(school_id, 0),
+                    })
+            
+            response_data = {
+                "id": str(evaluation.id),
+                "user_id": str(evaluation.user_id),
+                "targetCountry": "Australia",
+                "recommendedSchools": schools_with_explanations,
+                "fallbackInfo": fallback_info if fallback_info else {"applied": False, "steps": []},
+                "applicationGuidance": {
+                    "title": "澳洲大学申请流程说明",
+                    "steps": [
+                        "1. 准备材料：高中成绩单、英语成绩（IELTS/TOEFL/PTE）、个人陈述（部分学校需要）",
+                        "2. 选择入学时间：多数学校提供2月和7月入学，部分提供3个学期",
+                        "3. 直接申请：通过学校官网或授权代理申请（无需统一系统）",
+                        "4. 语言班选项：如英语未达标，可申请语言/过渡课程，通过后进入正课",
+                        "5. 接受Offer：收到录取后按要求缴纳押金并办理学生签证",
+                        "6. 签证申请：准备资金证明、体检等材料，申请澳洲学生签证"
+                    ],
+                    "keyPoints": [
+                        "申请时间灵活：通常提前3-6个月即可，部分热门专业需更早",
+                        "英语成绩：大部分学校接受多种英语考试，可后补（部分专业除外）",
+                        "申请费：多数学校申请免费或费用较低（约50-100澳元）",
+                        "代理申请：可通过学校授权代理免费申请，获得专业指导"
+                    ]
+                },
+                "keyInfoSummary": {
+                    "budgetRange": f"推荐学校学费范围：${min([s.get('tuition', 0) for s in recommended_schools] + [0]):,} - ${max([s.get('tuition', 0) for s in recommended_schools] + [0]):,}/年（USD）" if recommended_schools else "推荐学校学费范围：请查看具体学校信息",
+                    "englishRequirement": "大部分学校要求IELTS 6.5（单项不低于6.0）或同等水平",
+                    "intakeTiming": "主要入学时间：2月和7月",
+                    "pswInfo": "毕业后可获得2-4年PSW工作签证（取决于学习时长和地区）"
+                },
+                "created_at": evaluation.created_at
+            }
+        else:
+            # 其他国家（USA/UK/SG）使用原有结构
+            ed_suggestion, ea_suggestions, rd_suggestions = classify_applications(recommended_schools)
+            student_profile = {"summary": ""}
+            strategy = {"plan": "", "count": len(recommended_schools)}
+            
+            response_data = {
+                "id": str(evaluation.id),
+                "user_id": str(evaluation.user_id),
+                "studentProfile": student_profile,
+                "recommendedSchools": recommended_schools,
+                "edSuggestion": ed_suggestion,
+                "eaSuggestions": ea_suggestions,
+                "rdSuggestions": rd_suggestions,
+                "strategy": strategy,
+                "gptSummary": gpt_summary,
+                "created_at": evaluation.created_at
+            }
         
         print("响应数据构建完成")
         return response_data
@@ -241,6 +300,14 @@ async def get_parent_evaluation(eval_id: str):
             schools = await db.university_sg.find({"_id": {"$in": school_ids}}).to_list(length=len(school_ids))
         else:
             schools = await db.universities.find({"_id": {"$in": school_ids}}).to_list(length=len(school_ids))
+    
+    # 兜底逻辑：如果查询结果为空（无论是school_ids为空还是查询无结果），对于AU至少返回排名前10的学校
+    if not schools and input_country == "Australia":
+        print(f"⚠️ GET接口：评估ID {eval_id} 的推荐学校为空，执行兜底逻辑（返回排名前10的AU学校）")
+        all_au = await db.university_au.find({"country": "Australia"}).to_list(length=None)
+        if all_au:
+            sorted_by_rank = sorted(all_au, key=lambda x: int(x.get("rank", 9999) or 9999))
+            schools = sorted_by_rank[:10]
 
     # 映射为前端结构
     recommended_schools = []
@@ -341,19 +408,87 @@ async def get_parent_evaluation(eval_id: str):
                 "website": school.get("website", "")
             })
 
-    # 返回标准结构
-    return {
-        "id": str(evaluation.get("_id")),
-        "user_id": str(evaluation.get("user_id")),
-        "studentProfile": {"type": "", "description": ""},
-        "recommendedSchools": recommended_schools,
-        "edSuggestion": None,
-        "eaSuggestions": [],
-        "rdSuggestions": [],
-        "strategy": "",
-        "gptSummary": evaluation.get("gpt_summary", ""),
-        "created_at": evaluation.get("created_at")
-    }
+    # 根据国家返回不同结构
+    if input_country == "Australia":
+        # 澳洲专用结构：生成解释和申请指导
+        from gpt.au_evaluation import generate_school_explanations
+        input_dict = evaluation.get("input", {})
+        
+        schools_with_explanations = []
+        for school in recommended_schools:
+            school_id = school["id"]
+            school_detail = next((s for s in schools if str(s.get("_id")) == school_id), None)
+            
+            if school_detail:
+                explanation = generate_school_explanations(school_detail, input_dict)
+                schools_with_explanations.append({
+                    **school,
+                    "explanation": explanation,
+                    "matchScore": 0,  # GET接口不保存score，设为0
+                })
+            else:
+                schools_with_explanations.append({
+                    **school,
+                    "explanation": [],
+                    "matchScore": 0,
+                })
+        
+        # 提取fallback信息（如果之前保存了）
+        fallback_info = evaluation.get("fallback_info", {"applied": False, "steps": []})
+        
+        # 计算关键信息汇总
+        tuition_values = [s.get("tuition", 0) for s in recommended_schools if s.get("tuition", 0) > 0]
+        budget_range = ""
+        if tuition_values:
+            budget_range = f"推荐学校学费范围：${min(tuition_values):,} - ${max(tuition_values):,}/年（USD）"
+        else:
+            budget_range = "推荐学校学费范围：请查看具体学校信息"
+        
+        return {
+            "id": str(evaluation.get("_id")),
+            "user_id": str(evaluation.get("user_id")),
+            "targetCountry": "Australia",
+            "recommendedSchools": schools_with_explanations,
+            "fallbackInfo": fallback_info,
+            "applicationGuidance": {
+                "title": "澳洲大学申请流程说明",
+                "steps": [
+                    "1. 准备材料：高中成绩单、英语成绩（IELTS/TOEFL/PTE）、个人陈述（部分学校需要）",
+                    "2. 选择入学时间：多数学校提供2月和7月入学，部分提供3个学期",
+                    "3. 直接申请：通过学校官网或授权代理申请（无需统一系统）",
+                    "4. 语言班选项：如英语未达标，可申请语言/过渡课程，通过后进入正课",
+                    "5. 接受Offer：收到录取后按要求缴纳押金并办理学生签证",
+                    "6. 签证申请：准备资金证明、体检等材料，申请澳洲学生签证"
+                ],
+                "keyPoints": [
+                    "申请时间灵活：通常提前3-6个月即可，部分热门专业需更早",
+                    "英语成绩：大部分学校接受多种英语考试，可后补（部分专业除外）",
+                    "申请费：多数学校申请免费或费用较低（约50-100澳元）",
+                    "代理申请：可通过学校授权代理免费申请，获得专业指导"
+                ]
+            },
+            "keyInfoSummary": {
+                "budgetRange": budget_range,
+                "englishRequirement": "大部分学校要求IELTS 6.5（单项不低于6.0）或同等水平",
+                "intakeTiming": "主要入学时间：2月和7月",
+                "pswInfo": "毕业后可获得2-4年PSW工作签证（取决于学习时长和地区）"
+            },
+            "created_at": evaluation.get("created_at")
+        }
+    else:
+        # 其他国家返回原有结构
+        return {
+            "id": str(evaluation.get("_id")),
+            "user_id": str(evaluation.get("user_id")),
+            "studentProfile": {"type": "", "description": ""},
+            "recommendedSchools": recommended_schools,
+            "edSuggestion": None,
+            "eaSuggestions": [],
+            "rdSuggestions": [],
+            "strategy": "",
+            "gptSummary": evaluation.get("gpt_summary", ""),
+            "created_at": evaluation.get("created_at")
+        }
 
 @router.get("/parent/user/{user_id}", response_model=List[ParentEvaluationResponse])
 async def get_parent_evaluations_by_user(user_id: str):
