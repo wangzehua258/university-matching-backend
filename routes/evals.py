@@ -32,7 +32,7 @@ async def create_parent_evaluation(eval_data: ParentEvaluationCreate):
         # 分国家处理 - AU/UK/SG 将走各自逻辑文件；USA 维持旧逻辑
         country = eval_data.input.target_country
         print(f"🔍 DEBUG: country = '{country}', type = {type(country)}")
-        fallback_info = None  # 仅AU使用
+        fallback_info = None  # AU/UK/SG使用
         if country == "Australia":
             print("✅ 进入Australia分支 - 开始处理AU评估")
             # 从 AU 集合取原始数据
@@ -52,12 +52,17 @@ async def create_parent_evaluation(eval_data: ParentEvaluationCreate):
             school_obj_ids = [ObjectId(x) for x in recommended_school_ids]
             schools = await db.university_uk.find({"_id": {"$in": school_obj_ids}}).to_list(length=len(school_obj_ids))
         elif country == "Singapore":
+            print("✅ 进入Singapore分支 - 开始处理SG评估")
             sg_docs = await db.university_sg.find({"country": "Singapore"}).to_list(length=None)
-            scored = apply_sg_filters_and_score(eval_data.input.dict(), sg_docs)
+            print(f"📊 找到 {len(sg_docs)} 所新加坡大学")
+            scored, fallback_info = apply_sg_filters_and_score(eval_data.input.dict(), sg_docs, enable_fallback=True)
+            print(f"📊 评分后得到 {len(scored)} 所学校，fallback_applied: {fallback_info.get('applied', False) if fallback_info else False}")
             top = scored[:20]
             recommended_school_ids = [s["id"] for s in top]
+            print(f"📊 推荐学校IDs: {recommended_school_ids[:5]}...")
             school_obj_ids = [ObjectId(x) for x in recommended_school_ids]
             schools = await db.university_sg.find({"_id": {"$in": school_obj_ids}}).to_list(length=len(school_obj_ids))
+            print(f"📊 从数据库获取到 {len(schools)} 所学校详情")
         else:
             # USA 或未指定 → 使用原有逻辑（US universities 集合）
             recommended_school_ids = await recommend_schools_for_parent(eval_data.input)
@@ -73,7 +78,7 @@ async def create_parent_evaluation(eval_data: ParentEvaluationCreate):
             input=eval_data.input,
             recommended_schools=recommended_school_ids,
             gpt_summary=gpt_summary,
-            fallback_info=fallback_info if country == "Australia" else None  # 保存回退信息
+            fallback_info=fallback_info if country in ["Australia", "United Kingdom", "Singapore"] else None  # 保存回退信息（AU/UK/SG）
         )
         
         # Convert to dict without the id field to avoid _id: null issue
@@ -182,7 +187,7 @@ async def create_parent_evaluation(eval_data: ParentEvaluationCreate):
                 })
         
         # 根据国家构建不同的返回结构
-        print(f"🔍 当前国家: {country}, 类型: {type(country)}")
+        print(f"🔍 构建返回结构 - 当前国家: {country}, 类型: {type(country)}")
         if country == "Australia":
             print("✅ 进入澳洲专用分支")
             # 澳洲专用结构：生成每所学校的详细解释
@@ -317,8 +322,85 @@ async def create_parent_evaluation(eval_data: ParentEvaluationCreate):
                 },
                 "created_at": evaluation.created_at
             }
+        elif country == "Singapore":
+            print("✅ 进入新加坡专用返回结构分支")
+            # 新加坡专用结构：生成每所学校的详细解释
+            from gpt.sg_evaluation import generate_school_explanations
+            input_dict = eval_data.input.dict()
+            
+            # 创建ID到score的映射
+            score_map = {s["id"]: s.get("score", 0) for s in top if "id" in s}
+            
+            schools_with_explanations = []
+            for school in recommended_schools:
+                school_id = school["id"]
+                school_detail = next((s for s in schools if str(s.get("_id")) == school_id), None)
+                
+                if school_detail:
+                    # 标记是否因回退加入
+                    fallback_reason = ""
+                    if fallback_info and fallback_info.get("applied"):
+                        fallback_reason = "; ".join(fallback_info.get("steps", []))
+                    explanation = generate_school_explanations(
+                        school_detail,
+                        {**input_dict, "_fallback_applied": fallback_info.get("applied") if fallback_info else False, "_fallback_reason": fallback_reason}
+                    )
+                    schools_with_explanations.append({
+                        **school,
+                        "explanation": explanation,
+                        "matchScore": score_map.get(school_id, 0),
+                    })
+                else:
+                    schools_with_explanations.append({
+                        **school,
+                        "explanation": [],
+                        "matchScore": score_map.get(school_id, 0),
+                    })
+            
+            # 计算预算范围
+            tuition_values = [s.get("tuition", 0) for s in recommended_schools if s.get("tuition", 0) > 0]
+            budget_range = ""
+            if tuition_values:
+                budget_range = f"推荐学校学费范围：S${min(tuition_values):,} - S${max(tuition_values):,}/年（USD约${int(min(tuition_values) * 0.74):,} - ${int(max(tuition_values) * 0.74):,}）"
+            else:
+                budget_range = "推荐学校学费范围：请查看具体学校信息"
+            
+            response_data = {
+                "id": str(evaluation.id),
+                "user_id": str(evaluation.user_id),
+                "targetCountry": "Singapore",
+                "recommendedSchools": schools_with_explanations,
+                "fallbackInfo": fallback_info if fallback_info else {"applied": False, "steps": []},
+                "applicationGuidance": {
+                    "title": "新加坡大学申请流程说明",
+                    "steps": [
+                        "1. 准备材料：高中成绩单、英语成绩（IELTS/TOEFL/PTE）、个人陈述、推荐信",
+                        "2. 提交申请：通过各大学官网直接申请（无需统一系统）",
+                        "3. 申请时间：多数大学10-11月开始接受申请，次年1-3月截止",
+                        "4. 面试/作品集：部分专业需要面试、作品集或小论文（需提前准备）",
+                        "5. Tuition Grant（TG）：如申请TG，需签约毕业后在新加坡工作若干年",
+                        "6. 等待Offer：收到录取通知（有条件/无条件）",
+                        "7. 接受Offer：按要求缴纳押金确认录取",
+                        "8. 学生签证：申请新加坡学生准证（Student Pass）"
+                    ],
+                    "keyPoints": [
+                        "申请系统：各大学独立申请系统，需分别提交材料",
+                        "申请费：多数大学申请费约S$10-50（约USD 7-37）",
+                        "TG申请：可在接受Offer后申请Tuition Grant，降低学费但需履行Bond服务期",
+                        "面试要求：部分热门专业（如医学、法律、设计）需要面试或作品集",
+                        "双学位：部分大学提供双学位项目，需额外申请或满足条件"
+                    ]
+                },
+                "keyInfoSummary": {
+                    "budgetRange": budget_range,
+                    "tgInfo": "Tuition Grant可大幅降低学费，但需签约在新加坡工作若干年",
+                    "applicationTiming": "主要申请时间：10-11月开始，次年1-3月截止",
+                    "visaInfo": "学生准证有效期通常覆盖整个学习期间，毕业后可申请工作准证"
+                },
+                "created_at": evaluation.created_at
+            }
         else:
-            # 其他国家（USA/SG）使用原有结构
+            # 其他国家（USA）使用原有结构
             ed_suggestion, ea_suggestions, rd_suggestions = classify_applications(recommended_schools)
             student_profile = {"summary": ""}
             strategy = {"plan": "", "count": len(recommended_schools)}
@@ -578,6 +660,101 @@ async def get_parent_evaluation(eval_id: str):
             },
             "created_at": evaluation.get("created_at")
                 }
+        elif input_country == "Singapore":
+            print("✅ GET接口：进入新加坡专用返回结构分支")
+            # 新加坡专用结构：生成解释和申请指导
+            from gpt.sg_evaluation import generate_school_explanations
+            input_dict = evaluation.get("input") or {}
+            if not isinstance(input_dict, dict):
+                input_dict = {}
+            
+            schools_with_explanations = []
+            for school in recommended_schools:
+                school_id = school.get("id")
+                if not school_id:
+                    schools_with_explanations.append({
+                        **school,
+                        "explanation": [],
+                        "matchScore": 0,
+                    })
+                    continue
+                
+                school_detail = next((s for s in schools if str(s.get("_id")) == school_id), None)
+                
+                if school_detail:
+                    try:
+                        fallback_info_db = evaluation.get("fallback_info") or {"applied": False, "steps": []}
+                        if not isinstance(fallback_info_db, dict):
+                            fallback_info_db = {"applied": False, "steps": []}
+                        fallback_reason = "; ".join(fallback_info_db.get("steps", [])) if fallback_info_db.get("applied") else ""
+                        explanation = generate_school_explanations(
+                            school_detail,
+                            {**input_dict, "_fallback_applied": fallback_info_db.get("applied", False), "_fallback_reason": fallback_reason}
+                        )
+                        schools_with_explanations.append({
+                            **school,
+                            "explanation": explanation,
+                            "matchScore": 0,
+                        })
+                    except Exception as e:
+                        print(f"生成SG学校解释时出错: {e}")
+                        schools_with_explanations.append({
+                            **school,
+                            "explanation": [],
+                            "matchScore": 0,
+                        })
+                else:
+                    schools_with_explanations.append({
+                        **school,
+                        "explanation": [],
+                        "matchScore": 0,
+                    })
+            
+            fallback_info = evaluation.get("fallback_info") or {"applied": False, "steps": []}
+            if not isinstance(fallback_info, dict):
+                fallback_info = {"applied": False, "steps": []}
+            
+            tuition_values = [s.get("tuition", 0) for s in recommended_schools if s.get("tuition", 0) > 0]
+            budget_range = ""
+            if tuition_values:
+                budget_range = f"推荐学校学费范围：S${min(tuition_values):,} - S${max(tuition_values):,}/年（USD约${int(min(tuition_values) * 0.74):,} - ${int(max(tuition_values) * 0.74):,}）"
+            else:
+                budget_range = "推荐学校学费范围：请查看具体学校信息"
+            
+            return {
+                "id": str(evaluation.get("_id")),
+                "user_id": str(evaluation.get("user_id")),
+                "targetCountry": "Singapore",
+                "recommendedSchools": schools_with_explanations,
+                "fallbackInfo": fallback_info,
+                "applicationGuidance": {
+                    "title": "新加坡大学申请流程说明",
+                    "steps": [
+                        "1. 准备材料：高中成绩单、英语成绩（IELTS/TOEFL/PTE）、个人陈述、推荐信",
+                        "2. 提交申请：通过各大学官网直接申请（无需统一系统）",
+                        "3. 申请时间：多数大学10-11月开始接受申请，次年1-3月截止",
+                        "4. 面试/作品集：部分专业需要面试、作品集或小论文（需提前准备）",
+                        "5. Tuition Grant（TG）：如申请TG，需签约毕业后在新加坡工作若干年",
+                        "6. 等待Offer：收到录取通知（有条件/无条件）",
+                        "7. 接受Offer：按要求缴纳押金确认录取",
+                        "8. 学生签证：申请新加坡学生准证（Student Pass）"
+                    ],
+                    "keyPoints": [
+                        "申请系统：各大学独立申请系统，需分别提交材料",
+                        "申请费：多数大学申请费约S$10-50（约USD 7-37）",
+                        "TG申请：可在接受Offer后申请Tuition Grant，降低学费但需履行Bond服务期",
+                        "面试要求：部分热门专业（如医学、法律、设计）需要面试或作品集",
+                        "双学位：部分大学提供双学位项目，需额外申请或满足条件"
+                    ]
+                },
+                "keyInfoSummary": {
+                    "budgetRange": budget_range,
+                    "tgInfo": "Tuition Grant可大幅降低学费，但需签约在新加坡工作若干年",
+                    "applicationTiming": "主要申请时间：10-11月开始，次年1-3月截止",
+                    "visaInfo": "学生准证有效期通常覆盖整个学习期间，毕业后可申请工作准证"
+                },
+                "created_at": evaluation.get("created_at")
+            }
         elif input_country == "Australia":
             # 澳洲专用结构：生成解释和申请指导
             from gpt.au_evaluation import generate_school_explanations
