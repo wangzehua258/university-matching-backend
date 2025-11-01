@@ -146,6 +146,10 @@ class MockDatabase:
         self.universities = MockCollection()
         self.parent_evaluations = MockCollection()
         self.student_personality_tests = MockCollection()
+        # 添加国际大学集合
+        self.university_au = MockCollection()
+        self.university_uk = MockCollection()
+        self.university_sg = MockCollection()
         
         # Add some sample data for testing
         self._add_sample_data()
@@ -205,7 +209,19 @@ class MockCollection:
     async def find_one(self, query):
         """Mock find one operation"""
         for doc in self.data:
-            if all(doc.get(k) == v for k, v in query.items()):
+            match = True
+            for k, v in query.items():
+                doc_val = doc.get(k)
+                # Handle ObjectId comparison
+                if k == "_id":
+                    # Convert both to string for comparison
+                    if str(doc_val) != str(v):
+                        match = False
+                        break
+                elif doc_val != v:
+                    match = False
+                    break
+            if match:
                 return doc
         return None
     

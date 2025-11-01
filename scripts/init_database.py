@@ -568,7 +568,7 @@ def main():
     
     # 显示统计信息（仅美国数据集合）
     try:
-    show_database_stats(db)
+        show_database_stats(db)
     except Exception:
         pass
     
