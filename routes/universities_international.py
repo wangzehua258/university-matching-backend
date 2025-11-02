@@ -143,14 +143,74 @@ async def list_uk_universities(
 @router.get("/uk/{id}", response_model=UniversityUKResponse)
 async def get_uk_university(id: str):
     db = get_db()
+    if db is None:
+        raise HTTPException(status_code=503, detail="数据库未连接")
+    
     try:
         oid = ObjectId(id)
-    except Exception:
-        raise HTTPException(status_code=400, detail="无效的ID")
-    d = await db.university_uk.find_one({"_id": oid})
-    if not d:
-        raise HTTPException(status_code=404, detail="未找到大学")
-    return UniversityUKResponse(id=str(d["_id"]), **{**d, "strengths": _parse_strengths(d.get("strengths", [])), "tags": _parse_strengths(d.get("tags", []))})
+    except Exception as e:
+        print(f"❌ 无效的ID格式: {id}, 错误: {e}")
+        raise HTTPException(status_code=400, detail=f"无效的ID格式: {id}")
+    
+    try:
+        d = await db.university_uk.find_one({"_id": oid})
+        if not d:
+            print(f"❌ 未找到大学: ID={id}")
+            raise HTTPException(status_code=404, detail="未找到大学")
+        
+        # 确保返回的数据包含所有必需字段，处理数据类型转换
+        tuition_usd_val = d.get("tuition_usd", 0)
+        if isinstance(tuition_usd_val, float):
+            tuition_usd_val = int(tuition_usd_val)
+        
+        rank_val = d.get("rank", 9999)
+        if isinstance(rank_val, float):
+            rank_val = int(rank_val)
+        
+        personal_statement_weight_val = d.get("personal_statement_weight", 0)
+        if isinstance(personal_statement_weight_val, float):
+            personal_statement_weight_val = int(personal_statement_weight_val)
+        
+        intl_rate = d.get("intlRate")
+        if intl_rate is not None:
+            intl_rate = float(intl_rate)
+        else:
+            intl_rate = None
+        
+        result_data = {
+            "id": str(d["_id"]),
+            "name": d.get("name", ""),
+            "country": d.get("country", "United Kingdom"),
+            "city": d.get("city", ""),
+            "rank": rank_val,
+            "tuition_local": int(d.get("tuition_local", 0)),
+            "currency": d.get("currency", "GBP"),
+            "tuition_usd": tuition_usd_val,
+            "study_length_years": float(d.get("study_length_years", 3.0)),
+            "ucas_deadline_type": d.get("ucas_deadline_type", ""),
+            "typical_offer_alevel": d.get("typical_offer_alevel", ""),
+            "typical_offer_ib": d.get("typical_offer_ib", ""),
+            "foundation_available": bool(d.get("foundation_available", False)),
+            "russell_group": bool(d.get("russell_group", False)),
+            "placement_year_available": bool(d.get("placement_year_available", False)),
+            "interview_required": bool(d.get("interview_required", False)),
+            "admissions_tests": d.get("admissions_tests", "None"),
+            "personal_statement_weight": personal_statement_weight_val,
+            "strengths": _parse_strengths(d.get("strengths", [])),
+            "tags": _parse_strengths(d.get("tags", [])),
+            "intlRate": intl_rate,
+            "website": d.get("website", ""),
+            "scholarship_available": bool(d.get("scholarship_available", False))
+        }
+        
+        return UniversityUKResponse(**result_data)
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ 获取英国大学详情失败: ID={id}, 错误: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"服务器错误: {str(e)}")
 
 
 @router.get("/sg", response_model=List[UniversitySGResponse])

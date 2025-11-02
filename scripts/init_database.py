@@ -312,6 +312,10 @@ def import_uk_from_excel(db, file_path, clear_existing=False):
         db.university_uk.delete_many({})
     inserted, updated = 0, 0
     for row in _read_xlsx_rows(file_path, expected):
+        # 跳过name为空或None的行
+        if not row.get("name") or not str(row.get("name", "")).strip():
+            continue
+        
         row["strengths"] = [s.strip() for s in (row.get("strengths") or "").split(",") if s and str(s).strip()]
         row["tags"] = [s.strip() for s in (row.get("tags") or "").split(",") if s and str(s).strip()]
         existing = db.university_uk.find_one({"name": row["name"]})

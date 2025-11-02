@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List
+from typing import List, Optional
 
 
 class UniversityUK(BaseModel):
@@ -22,7 +22,7 @@ class UniversityUK(BaseModel):
     personal_statement_weight: int
     strengths: List[str] = []
     tags: List[str] = []
-    intlRate: float
+    intlRate: Optional[float] = None
     website: str
     scholarship_available: bool
 
@@ -48,7 +48,7 @@ class UniversityUKResponse(BaseModel):
     personal_statement_weight: int
     strengths: List[str]
     tags: List[str]
-    intlRate: float
+    intlRate: Optional[float] = Field(None)
     website: str
     scholarship_available: bool
 
