@@ -111,24 +111,76 @@ async def _query_international(country: str, page: int, page_size: int, filter_c
         "United Kingdom": "university_uk",
         "Singapore": "university_sg",
     }[country]
-    # Remove filters not applicable in intl collections except rank and strength
+    # 构建国际大学筛选条件
     intl_filter = {}
+    
+    # 处理排名筛选
     if "rank" in filter_conditions:
         intl_filter["rank"] = filter_conditions["rank"]
+    
+    # 处理strengths筛选（专业筛选）
     if "strengths" in filter_conditions:
-        intl_filter["strengths"] = filter_conditions["strengths"]
+        if isinstance(filter_conditions["strengths"], dict) and "$in" in filter_conditions["strengths"]:
+            intl_filter["strengths"] = filter_conditions["strengths"]
+    
+    # 收集所有需要$or的条件
+    or_conditions = []
+    
+    # 处理搜索（$or条件 - 搜索大学名称或专业）
+    if "$or" in filter_conditions:
+        # 对于国际大学，搜索name字段和strengths数组
+        for condition in filter_conditions["$or"]:
+            if "name" in condition:
+                or_conditions.append(condition)
+            if "strengths" in condition:
+                # 在strengths数组中搜索
+                or_conditions.append({"strengths": condition["strengths"]})
+    
+    # 处理学费筛选（国际大学使用tuition_usd或tuition_local）
+    # 注意：学费筛选应该与搜索条件组合（AND关系），但学费的两个字段之间是OR关系
+    if "tuition" in filter_conditions:
+        tuition_filter = filter_conditions["tuition"]
+        # 如果已经有搜索条件，学费筛选需要与搜索条件组合
+        # 使用$and来组合不同的$or条件组
+        if or_conditions:
+            # 如果有搜索条件，使用$and组合：搜索条件 AND 学费条件
+            intl_filter["$and"] = [
+                {"$or": or_conditions},
+                {"$or": [
+                    {"tuition_usd": tuition_filter},
+                    {"tuition_local": tuition_filter}
+                ]}
+            ]
+        else:
+            # 如果没有搜索条件，直接使用学费的$or
+            intl_filter["$or"] = [
+                {"tuition_usd": tuition_filter},
+                {"tuition_local": tuition_filter}
+            ]
+    elif or_conditions:
+        # 如果只有搜索条件，没有学费筛选
+        intl_filter["$or"] = or_conditions
     cursor = getattr(db, coll_name).find(intl_filter).skip((page - 1) * page_size).limit(page_size).sort("rank", 1)
     docs = await cursor.to_list(length=page_size)
     results = []
     for d in docs:
         strengths = _parse_list_or_csv(d.get("strengths", []))
+        # 获取学费（优先使用tuition_usd，如果没有则使用tuition_local）
+        tuition_val = d.get("tuition_usd") or d.get("tuition_local")
+        if tuition_val is None:
+            tuition_val = 0
+        elif isinstance(tuition_val, (int, float)):
+            tuition_val = int(tuition_val)
+        else:
+            tuition_val = 0
+        
         results.append({
             "id": str(d.get("_id")),
             "name": d.get("name"),
             "country": d.get("country", country),
             "state": d.get("city", ""),
             "rank": d.get("rank", 9999),
-            "tuition": int(d.get("tuition_usd", 0) or 0),
+            "tuition": tuition_val,
             "intl_rate": float(d.get("intlRate", 0) or 0.0),
             # reuse "type" to carry currency to avoid breaking UI
             "type": d.get("currency", "public"),
@@ -388,19 +440,36 @@ async def get_countries():
     return {"countries": sorted(countries)}
 
 @router.get("/strengths/list")
-async def get_strengths():
-    """获取所有优势专业列表"""
+async def get_strengths_list(
+    country: Optional[str] = Query(None, description="按国家筛选优势专业")
+):
+    """获取优势专业列表，支持按国家筛选"""
     db = get_db()
     
     try:
-        # 获取所有大学的strengths字段
-        universities = await db.universities.find({}, {"strengths": 1}).to_list(None)
+        all_strengths = set()
+        
+        # 如果有国家筛选
+        if country and country in INTERNATIONAL_COUNTRIES:
+            # 从对应的国际大学集合获取
+            coll_name = {
+                "Australia": "university_au",
+                "United Kingdom": "university_uk",
+                "Singapore": "university_sg",
+            }[country]
+            universities = await getattr(db, coll_name).find({}, {"strengths": 1}).to_list(None)
+        else:
+            # 如果没有国家筛选或有国家但不是国际大学，从universities集合获取
+            filter_condition = {}
+            if country:
+                filter_condition["country"] = country
+            universities = await db.universities.find(filter_condition, {"strengths": 1}).to_list(None)
         
         # 提取所有strengths并去重
-        all_strengths = set()
         for uni in universities:
-            if "strengths" in uni and isinstance(uni["strengths"], list):
-                for strength in uni["strengths"]:
+            if "strengths" in uni:
+                strengths = _parse_list_or_csv(uni["strengths"])
+                for strength in strengths:
                     if strength and isinstance(strength, str):
                         all_strengths.add(strength.strip())
         
