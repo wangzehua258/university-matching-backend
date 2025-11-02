@@ -20,7 +20,41 @@ load_dotenv()
 def connect_database():
     """连接MongoDB数据库"""
     mongo_url = os.getenv("MONGO_URL", "mongodb://localhost:27017")
-    client = MongoClient(mongo_url)
+    # MongoDB Atlas需要SSL支持
+    if "mongodb.net" in mongo_url or "mongodb+srv" in mongo_url:
+        # 对于MongoDB Atlas，使用tls=True并增加超时时间
+        try:
+            # 尝试标准连接（URL已包含SSL参数）
+            client = MongoClient(
+                mongo_url,
+                serverSelectionTimeoutMS=60000,  # 60秒超时
+                connectTimeoutMS=30000,  # 30秒连接超时
+                retryWrites=True
+            )
+            # 测试连接
+            client.admin.command('ping')
+        except Exception as e:
+            print(f"⚠️  标准连接失败，尝试替代方案: {e}")
+            # 如果失败，尝试使用tls=True
+            try:
+                client = MongoClient(
+                    mongo_url,
+                    tls=True,
+                    tlsAllowInvalidCertificates=False,
+                    serverSelectionTimeoutMS=60000,
+                    connectTimeoutMS=30000,
+                    retryWrites=True
+                )
+                client.admin.command('ping')
+            except Exception as e2:
+                print(f"❌ 所有连接方式都失败: {e2}")
+                raise
+    else:
+        # 本地MongoDB不需要SSL
+        client = MongoClient(
+            mongo_url,
+            serverSelectionTimeoutMS=5000
+        )
     db = client.university_matcher
     return db
 
