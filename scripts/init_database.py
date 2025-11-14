@@ -26,7 +26,21 @@ def connect_database():
         print("   请在 Render 环境变量中设置 MONGO_URL")
     
     print(f"🔗 正在连接 MongoDB...")
-    print(f"   URL: {mongo_url[:50]}..." if len(mongo_url) > 50 else f"   URL: {mongo_url}")
+    # 只显示URL的一部分，隐藏密码
+    if len(mongo_url) > 50:
+        # 尝试隐藏密码部分
+        if "@" in mongo_url:
+            parts = mongo_url.split("@")
+            if len(parts) == 2:
+                user_part = parts[0].split("://")[1].split(":")[0] if "://" in parts[0] else ""
+                safe_url = f"{mongo_url.split('://')[0]}://{user_part}:****@{parts[1][:30]}..."
+                print(f"   URL: {safe_url}")
+            else:
+                print(f"   URL: {mongo_url[:50]}...")
+        else:
+            print(f"   URL: {mongo_url[:50]}...")
+    else:
+        print(f"   URL: {mongo_url}")
     
     # MongoDB Atlas需要SSL支持
     if "mongodb.net" in mongo_url or "mongodb+srv" in mongo_url:
