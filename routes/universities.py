@@ -287,47 +287,109 @@ async def get_universities_paginated(
     page_size: int = Query(9, description="每页显示数量，默认9所")
 ):
     """获取大学列表（分页版本），支持多种筛选条件和分页信息"""
-    db = get_db()
-    
-    # 计算skip值
-    skip = (page - 1) * page_size
-    
-    # 构建查询条件
-    filter_conditions = {}
-    
-    if country:
-        filter_conditions["country"] = country
-    
-    if rank_min is not None or rank_max is not None:
-        rank_filter = {}
-        if rank_min is not None:
-            rank_filter["$gte"] = rank_min
-        if rank_max is not None:
-            rank_filter["$lte"] = rank_max
-        filter_conditions["rank"] = rank_filter
-    
-    if tuition_max:
-        filter_conditions["tuition"] = {"$lte": tuition_max}
-    
-    if type:
-        filter_conditions["type"] = type
-    
-    if strength:
-        filter_conditions["strengths"] = {"$in": [strength]}
-    
-    if search:
-        filter_conditions["$or"] = [
-            {"name": {"$regex": search, "$options": "i"}},
-            {"strengths": {"$regex": search, "$options": "i"}}
-        ]
-    # International collections handling
-    if country in INTERNATIONAL_COUNTRIES:
-        intl_results, total = await _query_international(country, page, page_size, filter_conditions)
+    try:
+        db = get_db()
+        if db is None:
+            # 如果数据库未连接，返回空结果
+            return PaginatedUniversityResponse(
+                universities=[],
+                total=0,
+                page=page,
+                page_size=page_size,
+                total_pages=0,
+                has_next=False,
+                has_prev=False
+            )
+        
+        # 计算skip值
+        skip = (page - 1) * page_size
+        
+        # 构建查询条件
+        filter_conditions = {}
+        
+        if country:
+            filter_conditions["country"] = country
+        
+        if rank_min is not None or rank_max is not None:
+            rank_filter = {}
+            if rank_min is not None:
+                rank_filter["$gte"] = rank_min
+            if rank_max is not None:
+                rank_filter["$lte"] = rank_max
+            filter_conditions["rank"] = rank_filter
+        
+        if tuition_max:
+            filter_conditions["tuition"] = {"$lte": tuition_max}
+        
+        if type:
+            filter_conditions["type"] = type
+        
+        if strength:
+            filter_conditions["strengths"] = {"$in": [strength]}
+        
+        if search:
+            filter_conditions["$or"] = [
+                {"name": {"$regex": search, "$options": "i"}},
+                {"strengths": {"$regex": search, "$options": "i"}}
+            ]
+        # International collections handling
+        if country in INTERNATIONAL_COUNTRIES:
+            intl_results, total = await _query_international(country, page, page_size, filter_conditions)
+            total_pages = (total + page_size - 1) // page_size
+            has_next = page < total_pages
+            has_prev = page > 1
+            return PaginatedUniversityResponse(
+                universities=[UniversityResponse(**r) for r in intl_results],
+                total=total,
+                page=page,
+                page_size=page_size,
+                total_pages=total_pages,
+                has_next=has_next,
+                has_prev=has_prev
+            )
+        
+        # 获取总数
+        try:
+            if hasattr(db.universities, 'count_documents'):
+                total = await db.universities.count_documents(filter_conditions)
+            else:
+                total = 50  # 默认值
+        except Exception as e:
+            print(f"获取总数失败: {e}")
+            total = 50  # 默认值
+        
+        # 执行分页查询
+        try:
+            cursor = db.universities.find(filter_conditions).skip(skip).limit(page_size).sort("rank", 1)
+            universities = await cursor.to_list(length=page_size)
+        except Exception as e:
+            print(f"查询失败: {e}")
+            universities = []
+        
+        # 计算分页信息
         total_pages = (total + page_size - 1) // page_size
         has_next = page < total_pages
         has_prev = page > 1
+        
+        # 转换为响应格式
+        result = []
+        for uni in universities:
+            result.append(UniversityResponse(
+                id=str(uni["_id"]),
+                name=uni["name"],
+                country=uni["country"],
+                state=uni["state"],
+                rank=uni["rank"],
+                tuition=uni["tuition"],
+                intl_rate=uni["intlRate"],
+                type=uni["type"],
+                strengths=uni["strengths"],
+                gpt_summary=uni["gptSummary"],
+                logo_url=uni.get("logoUrl")
+            ))
+        
         return PaginatedUniversityResponse(
-            universities=[UniversityResponse(**r) for r in intl_results],
+            universities=result,
             total=total,
             page=page,
             page_size=page_size,
@@ -335,56 +397,20 @@ async def get_universities_paginated(
             has_next=has_next,
             has_prev=has_prev
         )
-    
-    # 获取总数
-    try:
-        if hasattr(db.universities, 'count_documents'):
-            total = await db.universities.count_documents(filter_conditions)
-        else:
-            total = 50  # 默认值
     except Exception as e:
-        print(f"获取总数失败: {e}")
-        total = 50  # 默认值
-    
-    # 执行分页查询
-    try:
-        cursor = db.universities.find(filter_conditions).skip(skip).limit(page_size).sort("rank", 1)
-        universities = await cursor.to_list(length=page_size)
-    except Exception as e:
-        print(f"查询失败: {e}")
-        universities = []
-    
-    # 计算分页信息
-    total_pages = (total + page_size - 1) // page_size
-    has_next = page < total_pages
-    has_prev = page > 1
-    
-    # 转换为响应格式
-    result = []
-    for uni in universities:
-        result.append(UniversityResponse(
-            id=str(uni["_id"]),
-            name=uni["name"],
-            country=uni["country"],
-            state=uni["state"],
-            rank=uni["rank"],
-            tuition=uni["tuition"],
-            intl_rate=uni["intlRate"],
-            type=uni["type"],
-            strengths=uni["strengths"],
-            gpt_summary=uni["gptSummary"],
-            logo_url=uni.get("logoUrl")
-        ))
-    
-    return PaginatedUniversityResponse(
-        universities=result,
-        total=total,
-        page=page,
-        page_size=page_size,
-        total_pages=total_pages,
-        has_next=has_next,
-        has_prev=has_prev
-    )
+        print(f"获取大学列表失败: {e}")
+        import traceback
+        traceback.print_exc()
+        # 返回空结果，避免500错误
+        return PaginatedUniversityResponse(
+            universities=[],
+            total=0,
+            page=page,
+            page_size=page_size,
+            total_pages=0,
+            has_next=False,
+            has_prev=False
+        )
 
 @router.get("/{university_id}", response_model=UniversityResponse)
 async def get_university(university_id: str):
@@ -434,19 +460,32 @@ async def get_university(university_id: str):
 @router.get("/countries/list")
 async def get_countries():
     """获取所有国家列表"""
-    db = get_db()
-    
-    countries = await db.universities.distinct("country")
-    return {"countries": sorted(countries)}
+    try:
+        db = get_db()
+        if db is None:
+            # 如果数据库未连接，返回默认国家列表
+            return {"countries": ["USA", "Australia", "United Kingdom", "Singapore"]}
+        
+        countries = await db.universities.distinct("country")
+        # 确保包含所有支持的国家
+        all_countries = set(countries) if countries else set()
+        all_countries.update(["USA", "Australia", "United Kingdom", "Singapore"])
+        return {"countries": sorted(list(all_countries))}
+    except Exception as e:
+        print(f"获取国家列表失败: {e}")
+        # 返回默认国家列表，避免500错误
+        return {"countries": ["USA", "Australia", "United Kingdom", "Singapore"]}
 
 @router.get("/strengths/list")
 async def get_strengths_list(
     country: Optional[str] = Query(None, description="按国家筛选优势专业")
 ):
     """获取优势专业列表，支持按国家筛选"""
-    db = get_db()
-    
     try:
+        db = get_db()
+        if db is None:
+            return {"strengths": []}
+        
         all_strengths = set()
         
         # 如果有国家筛选
