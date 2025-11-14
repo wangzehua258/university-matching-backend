@@ -160,8 +160,13 @@ async def _query_international(country: str, page: int, page_size: int, filter_c
     elif or_conditions:
         # 如果只有搜索条件，没有学费筛选
         intl_filter["$or"] = or_conditions
+    # 调试：打印查询条件
+    print(f"🔍 查询国际大学 ({country}): {intl_filter}")
+    
     cursor = getattr(db, coll_name).find(intl_filter).skip((page - 1) * page_size).limit(page_size).sort("rank", 1)
     docs = await cursor.to_list(length=page_size)
+    
+    print(f"📊 查询到 {len(docs)} 所{country}大学")
     results = []
     for d in docs:
         strengths = _parse_list_or_csv(d.get("strengths", []))
@@ -218,7 +223,20 @@ async def get_universities(
     filter_conditions = {}
     
     if country:
-        filter_conditions["country"] = country
+        # 处理国家名称映射：前端可能使用 "USA"，但数据库中可能是 "United States" 或其他
+        country_mapping = {
+            "USA": ["USA", "United States", "US"],
+            "United States": ["USA", "United States", "US"],
+            "US": ["USA", "United States", "US"],
+        }
+        # 如果是国际大学，直接使用
+        if country in INTERNATIONAL_COUNTRIES:
+            filter_conditions["country"] = country
+        # 如果是美国，需要处理多种可能的名称
+        elif country in country_mapping:
+            filter_conditions["country"] = {"$in": country_mapping[country]}
+        else:
+            filter_conditions["country"] = country
     
     if rank_min is not None or rank_max is not None:
         rank_filter = {}
@@ -308,7 +326,20 @@ async def get_universities_paginated(
         filter_conditions = {}
         
         if country:
-            filter_conditions["country"] = country
+            # 处理国家名称映射：前端可能使用 "USA"，但数据库中可能是 "United States" 或其他
+            country_mapping = {
+                "USA": ["USA", "United States", "US"],
+                "United States": ["USA", "United States", "US"],
+                "US": ["USA", "United States", "US"],
+            }
+            # 如果是国际大学，直接使用
+            if country in INTERNATIONAL_COUNTRIES:
+                filter_conditions["country"] = country
+            # 如果是美国，需要处理多种可能的名称
+            elif country in country_mapping:
+                filter_conditions["country"] = {"$in": country_mapping[country]}
+            else:
+                filter_conditions["country"] = country
         
         if rank_min is not None or rank_max is not None:
             rank_filter = {}
@@ -353,18 +384,34 @@ async def get_universities_paginated(
             if hasattr(db.universities, 'count_documents'):
                 total = await db.universities.count_documents(filter_conditions)
             else:
-                total = 50  # 默认值
+                # 尝试同步方法
+                total = db.universities.count_documents(filter_conditions)
         except Exception as e:
             print(f"获取总数失败: {e}")
-            total = 50  # 默认值
+            # 尝试同步方法作为回退
+            try:
+                total = db.universities.count_documents(filter_conditions)
+            except:
+                total = 50  # 默认值
+        
+        # 调试：打印查询条件
+        print(f"🔍 查询条件: {filter_conditions}")
+        print(f"📊 总数: {total}")
         
         # 执行分页查询
         try:
             cursor = db.universities.find(filter_conditions).skip(skip).limit(page_size).sort("rank", 1)
             universities = await cursor.to_list(length=page_size)
+            print(f"✅ 查询到 {len(universities)} 所大学")
         except Exception as e:
             print(f"查询失败: {e}")
-            universities = []
+            # 尝试同步方法作为回退
+            try:
+                universities = list(db.universities.find(filter_conditions).skip(skip).limit(page_size).sort("rank", 1))
+                print(f"✅ 同步查询到 {len(universities)} 所大学")
+            except Exception as e2:
+                print(f"同步查询也失败: {e2}")
+                universities = []
         
         # 计算分页信息
         total_pages = (total + page_size - 1) // page_size

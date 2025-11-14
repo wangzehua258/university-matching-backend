@@ -188,6 +188,43 @@ class MockDatabase:
         
         for uni in sample_universities:
             self.universities.data.append(uni)
+        
+        # 添加国际大学示例数据
+        sample_au = [
+            {
+                "_id": "au_1",
+                "name": "University of Melbourne",
+                "country": "Australia",
+                "city": "Melbourne",
+                "rank": 32,
+                "tuition_local": 48000,
+                "tuition_usd": 32000,
+                "currency": "AUD",
+                "study_length_years": 3,
+                "strengths": ["CS", "Engineering", "Business"],
+                "website": "https://www.unimelb.edu.au"
+            }
+        ]
+        for uni in sample_au:
+            self.university_au.data.append(uni)
+        
+        sample_sg = [
+            {
+                "_id": "sg_1",
+                "name": "National University of Singapore",
+                "country": "Singapore",
+                "city": "Singapore",
+                "rank": 11,
+                "tuition_local": 45000,
+                "tuition_usd": 33000,
+                "currency": "SGD",
+                "study_length_years": 4,
+                "strengths": ["CS", "Engineering", "Business"],
+                "website": "https://www.nus.edu.sg"
+            }
+        ]
+        for uni in sample_sg:
+            self.university_sg.data.append(uni)
 
 class MockCollection:
     """Mock collection for development"""
@@ -225,13 +262,83 @@ class MockCollection:
                 return doc
         return None
     
-    def find(self, query):
-        """Mock find operation"""
+    def find(self, query=None, projection=None):
+        """Mock find operation - supports projection parameter"""
+        if query is None:
+            query = {}
+        
         results = []
         for doc in self.data:
-            if all(doc.get(k) == v for k, v in query.items()):
-                results.append(doc)
+            if self._match_query(doc, query):
+                # Apply projection if provided
+                if projection:
+                    projected_doc = {}
+                    for field, include in projection.items():
+                        if include == 1 or include is True:
+                            # Include only specified fields
+                            if field in doc:
+                                projected_doc[field] = doc[field]
+                    # Always include _id unless explicitly excluded
+                    if "_id" not in projection or projection.get("_id", 1) != 0:
+                        projected_doc["_id"] = doc.get("_id")
+                    results.append(projected_doc)
+                else:
+                    results.append(doc)
         return MockCursor(results)
+    
+    def _match_query(self, doc, query):
+        """Check if document matches query (supports basic MongoDB operators)"""
+        if not query:
+            return True
+        
+        for k, v in query.items():
+            if k == "$or":
+                # Handle $or operator
+                if not any(self._match_query(doc, condition) for condition in v):
+                    return False
+            elif k == "$and":
+                # Handle $and operator
+                if not all(self._match_query(doc, condition) for condition in v):
+                    return False
+            elif isinstance(v, dict):
+                # Handle operators like $in, $gte, $lte, $regex
+                if "$in" in v:
+                    if doc.get(k) not in v["$in"]:
+                        return False
+                elif "$gte" in v:
+                    if doc.get(k, 0) < v["$gte"]:
+                        return False
+                elif "$lte" in v:
+                    if doc.get(k, float('inf')) > v["$lte"]:
+                        return False
+                elif "$regex" in v:
+                    import re
+                    pattern = v["$regex"]
+                    options = v.get("$options", "")
+                    flags = re.IGNORECASE if "i" in options else 0
+                    if not re.search(pattern, str(doc.get(k, "")), flags):
+                        return False
+                else:
+                    # Nested query
+                    if not self._match_query(doc.get(k, {}), v):
+                        return False
+            elif isinstance(v, list):
+                # Check if document field (as list) contains any of the query values
+                doc_val = doc.get(k, [])
+                if not isinstance(doc_val, list):
+                    doc_val = [doc_val]
+                if not any(item in doc_val for item in v):
+                    return False
+            else:
+                # Simple equality check
+                doc_val = doc.get(k)
+                # Handle array fields - check if query value is in array
+                if isinstance(doc_val, list):
+                    if v not in doc_val:
+                        return False
+                elif doc_val != v:
+                    return False
+        return True
     
     async def update_one(self, query, update):
         """Mock update operation"""
@@ -254,8 +361,23 @@ class MockCollection:
         values = set()
         for doc in self.data:
             if field in doc:
-                values.add(doc[field])
+                val = doc[field]
+                # Handle list values (e.g., strengths)
+                if isinstance(val, list):
+                    values.update(val)
+                else:
+                    values.add(val)
         return list(values)
+    
+    async def count_documents(self, query=None):
+        """Mock count_documents operation"""
+        if query is None:
+            query = {}
+        count = 0
+        for doc in self.data:
+            if self._match_query(doc, query):
+                count += 1
+        return count
 
 class MockCursor:
     """Mock cursor for find operations"""
