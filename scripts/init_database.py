@@ -20,42 +20,71 @@ load_dotenv()
 def connect_database():
     """连接MongoDB数据库"""
     mongo_url = os.getenv("MONGO_URL", "mongodb://localhost:27017")
+    
+    if not mongo_url or mongo_url == "mongodb://localhost:27017":
+        print("⚠️  警告: MONGO_URL 环境变量未设置，使用默认值")
+        print("   请在 Render 环境变量中设置 MONGO_URL")
+    
+    print(f"🔗 正在连接 MongoDB...")
+    print(f"   URL: {mongo_url[:50]}..." if len(mongo_url) > 50 else f"   URL: {mongo_url}")
+    
     # MongoDB Atlas需要SSL支持
     if "mongodb.net" in mongo_url or "mongodb+srv" in mongo_url:
         # 对于MongoDB Atlas，使用tls=True并增加超时时间
+        print("   检测到 MongoDB Atlas 连接...")
         try:
             # 尝试标准连接（URL已包含SSL参数）
+            print("   尝试标准连接...")
             client = MongoClient(
                 mongo_url,
-                serverSelectionTimeoutMS=60000,  # 60秒超时
-                connectTimeoutMS=30000,  # 30秒连接超时
-                retryWrites=True
+                serverSelectionTimeoutMS=120000,  # 120秒超时（增加到2分钟）
+                connectTimeoutMS=60000,  # 60秒连接超时
+                socketTimeoutMS=60000,  # 60秒socket超时
+                retryWrites=True,
+                retryReads=True
             )
-            # 测试连接
-            client.admin.command('ping')
+            # 测试连接（带超时）
+            print("   测试连接...")
+            client.admin.command('ping', maxTimeMS=10000)
+            print("   ✅ 连接成功！")
         except Exception as e:
-            print(f"⚠️  标准连接失败，尝试替代方案: {e}")
+            print(f"   ⚠️  标准连接失败: {e}")
+            print("   尝试替代连接方式...")
             # 如果失败，尝试使用tls=True
             try:
                 client = MongoClient(
                     mongo_url,
                     tls=True,
                     tlsAllowInvalidCertificates=False,
-                    serverSelectionTimeoutMS=60000,
-                    connectTimeoutMS=30000,
-                    retryWrites=True
+                    serverSelectionTimeoutMS=120000,
+                    connectTimeoutMS=60000,
+                    socketTimeoutMS=60000,
+                    retryWrites=True,
+                    retryReads=True
                 )
-                client.admin.command('ping')
+                client.admin.command('ping', maxTimeMS=10000)
+                print("   ✅ 替代连接方式成功！")
             except Exception as e2:
-                print(f"❌ 所有连接方式都失败: {e2}")
+                print(f"   ❌ 所有连接方式都失败: {e2}")
+                print(f"   错误详情: {type(e2).__name__}")
                 raise
     else:
         # 本地MongoDB不需要SSL
+        print("   检测到本地 MongoDB 连接...")
         client = MongoClient(
             mongo_url,
-            serverSelectionTimeoutMS=5000
+            serverSelectionTimeoutMS=10000,
+            connectTimeoutMS=5000
         )
+        try:
+            client.admin.command('ping')
+            print("   ✅ 连接成功！")
+        except Exception as e:
+            print(f"   ❌ 本地连接失败: {e}")
+            raise
+    
     db = client.university_matcher
+    print(f"   📊 使用数据库: {db.name}")
     return db
 
 def create_indexes(db):
@@ -511,12 +540,34 @@ def main():
     print("🚀 大学数据库管理工具")
     print("=" * 50)
     
+    # 检查环境变量
+    mongo_url = os.getenv("MONGO_URL")
+    if not mongo_url:
+        print("⚠️  警告: MONGO_URL 环境变量未设置")
+        print("   请在 Render 环境变量中设置 MONGO_URL")
+        print("   或者使用: export MONGO_URL='your_mongodb_connection_string'")
+        print()
+    
     # 连接数据库
     try:
         db = connect_database()
         print("✅ 数据库连接成功")
+    except KeyboardInterrupt:
+        print("\n❌ 连接被用户中断")
+        print("   提示: 如果连接一直卡住，请检查:")
+        print("   1. MONGO_URL 环境变量是否正确设置")
+        print("   2. MongoDB Atlas 网络访问是否允许 Render 的 IP")
+        print("   3. MongoDB 连接字符串格式是否正确")
+        return
     except Exception as e:
         print(f"❌ 数据库连接失败: {e}")
+        print(f"   错误类型: {type(e).__name__}")
+        print()
+        print("   故障排查建议:")
+        print("   1. 检查 MONGO_URL 环境变量是否正确")
+        print("   2. 确认 MongoDB Atlas 网络访问列表包含 0.0.0.0/0 (允许所有IP)")
+        print("   3. 检查 MongoDB 用户名和密码是否正确")
+        print("   4. 确认 MongoDB 集群状态正常")
         return
     
     # 创建索引
