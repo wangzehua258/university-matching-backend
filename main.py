@@ -38,20 +38,29 @@ import os
 allowed_origins = [
     "http://localhost:3000", 
     "http://localhost:3001",
-    "https://www.xuanxiao360.com",  # Your GoDaddy domain
-    "https://xuanxiao360.com",  # Your GoDaddy domain without www
+    "https://www.xuanxiao360.com",  # Production domain with www
+    "https://xuanxiao360.com",  # Production domain without www
+    "http://www.xuanxiao360.com",  # HTTP version with www (if needed)
+    "http://xuanxiao360.com",  # HTTP version without www (if needed)
 ]
 
 # Add environment variable for production origins
 if os.getenv("ALLOWED_ORIGINS"):
-    allowed_origins.extend(os.getenv("ALLOWED_ORIGINS").split(","))
+    additional_origins = [origin.strip() for origin in os.getenv("ALLOWED_ORIGINS").split(",") if origin.strip()]
+    allowed_origins.extend(additional_origins)
+
+# Remove duplicates while preserving order
+seen = set()
+allowed_origins = [x for x in allowed_origins if not (x in seen or seen.add(x))]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=3600,
 )
 
 # 注册路由
