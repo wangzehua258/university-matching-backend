@@ -340,7 +340,7 @@ async def get_universities_paginated(
                 filter_conditions["country"] = {"$in": country_mapping[country]}
             else:
                 filter_conditions["country"] = country
-        
+    
         if rank_min is not None or rank_max is not None:
             rank_filter = {}
             if rank_min is not None:
@@ -363,21 +363,21 @@ async def get_universities_paginated(
                 {"name": {"$regex": search, "$options": "i"}},
                 {"strengths": {"$regex": search, "$options": "i"}}
             ]
-        # International collections handling
-        if country in INTERNATIONAL_COUNTRIES:
-            intl_results, total = await _query_international(country, page, page_size, filter_conditions)
-            total_pages = (total + page_size - 1) // page_size
-            has_next = page < total_pages
-            has_prev = page > 1
-            return PaginatedUniversityResponse(
-                universities=[UniversityResponse(**r) for r in intl_results],
-                total=total,
-                page=page,
-                page_size=page_size,
-                total_pages=total_pages,
-                has_next=has_next,
-                has_prev=has_prev
-            )
+            # International collections handling
+            if country in INTERNATIONAL_COUNTRIES:
+                intl_results, total = await _query_international(country, page, page_size, filter_conditions)
+                total_pages = (total + page_size - 1) // page_size
+                has_next = page < total_pages
+                has_prev = page > 1
+                return PaginatedUniversityResponse(
+                    universities=[UniversityResponse(**r) for r in intl_results],
+                    total=total,
+                    page=page,
+                    page_size=page_size,
+                    total_pages=total_pages,
+                    has_next=has_next,
+                    has_prev=has_prev
+                )
         
         # 获取总数
         try:
@@ -397,7 +397,7 @@ async def get_universities_paginated(
         # 调试：打印查询条件
         print(f"🔍 查询条件: {filter_conditions}")
         print(f"📊 总数: {total}")
-        
+            
         # 执行分页查询
         try:
             cursor = db.universities.find(filter_conditions).skip(skip).limit(page_size).sort("rank", 1)
@@ -512,7 +512,7 @@ async def get_countries():
         if db is None:
             # 如果数据库未连接，返回默认国家列表
             return {"countries": ["USA", "Australia", "United Kingdom", "Singapore"]}
-        
+    
         countries = await db.universities.distinct("country")
         # 确保包含所有支持的国家
         all_countries = set(countries) if countries else set()

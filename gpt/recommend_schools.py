@@ -434,7 +434,7 @@ def generate_student_profile(input_data: ParentEvaluationInput) -> Dict[str, str
     
     # 按优先级顺序判断学生类型
     # 1. 学术明星型（ACADEMIC_STAR）
-    if (gpa_numeric >= 3.8 and sat_score and sat_score >= 1450 and 
+    if (gpa_numeric >= 3.85 and sat_score and sat_score >= 1500 and 
         has_research_competition_activities(activities) and 
         len(interest_fields) >= 3):
         return {
@@ -443,7 +443,7 @@ def generate_student_profile(input_data: ParentEvaluationInput) -> Dict[str, str
         }
     
     # 2. 全能型（BALANCED）
-    if (gpa_numeric >= 3.5 and len(activities) >= 2 and 
+    if (gpa_numeric >= 3.6 and len(activities) >= 4 and 
         has_diverse_activities(activities) and len(interest_fields) >= 3):
         return {
             "type": "全能型（BALANCED）",
@@ -451,7 +451,7 @@ def generate_student_profile(input_data: ParentEvaluationInput) -> Dict[str, str
         }
     
     # 3. 探究型（RESEARCHER）
-    if (has_research_activities(activities) and len(interest_fields) >= 3 and gpa_numeric >= 3.5):
+    if (has_research_activities(activities) and len(interest_fields) >= 4 and gpa_numeric >= 3.6):
         return {
             "type": "探究型（RESEARCHER）",
             "description": f"您的孩子是一位{gpa_range}的学生，{format_research_activities_description(activities)}，偏好探索与深度学习。对{', '.join(interest_fields)}领域有明确兴趣。建议关注研究资源丰富、本科研究机会多的学校。"
@@ -472,7 +472,7 @@ def generate_student_profile(input_data: ParentEvaluationInput) -> Dict[str, str
         }
     
     # 6. 探索型（EXPLORER）
-    if (len(interest_fields) >= 3 and has_diverse_interests(interest_fields) and len(activities) >= 2):
+    if (len(interest_fields) >= 3 and has_diverse_interests(interest_fields) and len(activities) >= 4):
         return {
             "type": "探索型（EXPLORER）",
             "description": f"您的孩子{gpa_range}，{format_activities_description(activities)}，兴趣广泛且跨度较大。对{', '.join(interest_fields)}等多个领域都有兴趣。尚未聚焦特定方向，适合通识教育丰富、跨学科自由度高的学校。"

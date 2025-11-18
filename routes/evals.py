@@ -69,8 +69,10 @@ async def create_parent_evaluation(eval_data: ParentEvaluationCreate):
             school_ids = [ObjectId(school_id) for school_id in recommended_school_ids]
             schools = await db.universities.find({"_id": {"$in": school_ids}}).to_list(length=len(school_ids))
         
-        # 不使用 OpenAI，总结留空
-        gpt_summary = ""
+        # 生成学生画像、申请策略和专业建议
+        student_profile = generate_student_profile(eval_data.input)
+        strategy_text = generate_application_strategy(eval_data.input, len(recommended_school_ids))
+        gpt_summary = await generate_parent_evaluation_summary(eval_data.input, recommended_school_ids)
         
         # 创建评估记录
         evaluation = ParentEvaluation(
@@ -183,7 +185,10 @@ async def create_parent_evaluation(eval_data: ParentEvaluationCreate):
                     "actRange": school.get("actRange", ""),
                     "gpaRange": school.get("gpaRange", ""),
                     "applicationDeadline": school.get("applicationDeadline", ""),
-                    "website": school.get("website", "")
+                    "website": school.get("website", ""),
+                    "supports_ed": school.get("supports_ed", False),
+                    "supports_ea": school.get("supports_ea", False),
+                    "supports_rd": school.get("supports_rd", False)
                 })
         
         # 根据国家构建不同的返回结构
@@ -245,6 +250,7 @@ async def create_parent_evaluation(eval_data: ParentEvaluationCreate):
                     "intakeTiming": "主要入学时间：2月和7月",
                     "pswInfo": "毕业后可获得2-4年PSW工作签证（取决于学习时长和地区）"
                 },
+                "gptSummary": gpt_summary,
                 "created_at": evaluation.created_at
             }
         elif country == "United Kingdom":
@@ -320,6 +326,7 @@ async def create_parent_evaluation(eval_data: ParentEvaluationCreate):
                     "foundationInfo": "如成绩不足，可考虑Foundation/国际大一路线",
                     "visaInfo": "毕业后可申请PSW工作签证（本科/硕士2年，博士3年）"
                 },
+                "gptSummary": gpt_summary,
                 "created_at": evaluation.created_at
             }
         elif country == "Singapore":
@@ -397,13 +404,14 @@ async def create_parent_evaluation(eval_data: ParentEvaluationCreate):
                     "applicationTiming": "主要申请时间：10-11月开始，次年1-3月截止",
                     "visaInfo": "学生准证有效期通常覆盖整个学习期间，毕业后可申请工作准证"
                 },
+                "gptSummary": gpt_summary,
                 "created_at": evaluation.created_at
             }
         else:
             # 其他国家（USA）使用原有结构
             ed_suggestion, ea_suggestions, rd_suggestions = classify_applications(recommended_schools)
-            student_profile = {"summary": ""}
-            strategy = {"plan": "", "count": len(recommended_schools)}
+            # 使用生成的学生画像和申请策略
+            strategy = {"plan": strategy_text, "count": len(recommended_schools)}
             
             response_data = {
                 "id": str(evaluation.id),
@@ -563,7 +571,10 @@ async def get_parent_evaluation(eval_id: str):
                     "actRange": school.get("actRange", ""),
                     "gpaRange": school.get("gpaRange", ""),
                     "applicationDeadline": school.get("applicationDeadline", ""),
-                    "website": school.get("website", "")
+                    "website": school.get("website", ""),
+                    "supports_ed": school.get("supports_ed", False),
+                    "supports_ea": school.get("supports_ea", False),
+                    "supports_rd": school.get("supports_rd", False)
                 })
 
         # 根据国家返回不同结构
@@ -842,17 +853,39 @@ async def get_parent_evaluation(eval_id: str):
             "created_at": evaluation.get("created_at")
             }
         else:
-            # 其他国家返回原有结构
+            # 其他国家（USA）返回原有结构，需要分类ED/EA/RD
+            from gpt.recommend_schools import classify_applications, generate_student_profile, generate_application_strategy
+            from models.evaluation import ParentEvaluationInput
+            
+            ed_suggestion, ea_suggestions, rd_suggestions = classify_applications(recommended_schools)
+            
+            # 从数据库读取的input数据重新生成学生画像和申请策略
+            input_dict = evaluation.get("input") or {}
+            if not isinstance(input_dict, dict):
+                input_dict = {}
+            
+            try:
+                # 将字典转换为ParentEvaluationInput对象
+                input_data = ParentEvaluationInput(**input_dict)
+                student_profile = generate_student_profile(input_data)
+                strategy_text = generate_application_strategy(input_data, len(recommended_schools))
+            except Exception as e:
+                print(f"⚠️ 生成学生画像或申请策略时出错: {e}")
+                student_profile = {"type": "", "description": ""}
+                strategy_text = ""
+            
+            strategy = {"plan": strategy_text, "count": len(recommended_schools)}
+            
             return {
-            "id": str(evaluation.get("_id")),
-            "user_id": str(evaluation.get("user_id")),
-            "studentProfile": {"type": "", "description": ""},
-            "recommendedSchools": recommended_schools,
-            "edSuggestion": None,
-            "eaSuggestions": [],
-            "rdSuggestions": [],
-            "strategy": "",
-            "gptSummary": evaluation.get("gpt_summary", ""),
+                "id": str(evaluation.get("_id")),
+                "user_id": str(evaluation.get("user_id")),
+                "studentProfile": student_profile,
+                "recommendedSchools": recommended_schools,
+                "edSuggestion": ed_suggestion,
+                "eaSuggestions": ea_suggestions,
+                "rdSuggestions": rd_suggestions,
+                "strategy": strategy,
+                "gptSummary": evaluation.get("gpt_summary", ""),
                 "created_at": evaluation.get("created_at")
             }
     except Exception as e:
