@@ -83,7 +83,6 @@ def build_au_gpt_prompt(input_data: Dict[str, Any], school_list: List[Dict[str, 
     """构建GPT提示词（澳洲大学）"""
     if school_list is None:
         school_list = []
-    school_names = [f"{school['name']}（排名#{school.get('rank', 'N/A')}）" for school in school_list]
     
     # 提取澳洲大学评估的关键信息
     academic_band = input_data.get("academic_band", "未提供")
@@ -94,52 +93,336 @@ def build_au_gpt_prompt(input_data: Dict[str, Any], school_list: List[Dict[str, 
     psw_importance = input_data.get("psw_importance", "一般")
     city_preferences = input_data.get("city_preferences", [])
     english_readiness = input_data.get("english_readiness", "未提供")
+    reputation_vs_value = input_data.get("reputation_vs_value", "均衡")
+    main_concern = input_data.get("main_concern", "")
+    
+    # 分析推荐学校
+    school_info = []
+    for school in school_list[:5]:
+        rank = school.get('rank', 'N/A')
+        name = school.get('name', '')
+        strengths = school.get('strengths', [])
+        tuition = school.get('tuition_usd', 0)
+        school_info.append(f"{name}（全球排名#{rank}，学费${tuition:,}/年，优势专业：{', '.join(strengths[:3]) if strengths else '未提供'}）")
+    
+    # 分析学术水平对应的竞争力
+    academic_analysis = ""
+    if "3.9+" in academic_band or "3.8+" in academic_band:
+        academic_analysis = "学术水平优秀，具备申请澳洲顶尖大学（Go8）的竞争力"
+    elif "3.6+" in academic_band:
+        academic_analysis = "学术水平良好，可以申请澳洲优质大学"
+    else:
+        academic_analysis = "学术水平需要进一步提升，建议考虑预科或语言班路径"
+    
+    # 分析专业兴趣匹配度
+    interest_analysis = ""
+    if interests:
+        matched_strengths = []
+        for school in school_list[:3]:
+            school_strengths = school.get('strengths', [])
+            matched = [i for i in interests if any(i.lower() in s.lower() for s in school_strengths)]
+            if matched:
+                matched_strengths.extend(matched)
+        if matched_strengths:
+            interest_analysis = f"您的专业兴趣（{', '.join(interests)}）与推荐学校的优势专业高度匹配，这些学校在相关领域都有很强的实力"
+        else:
+            interest_analysis = f"您的专业兴趣（{', '.join(interests)}）需要进一步匹配，建议深入了解各校的专业设置"
+    
+    # 分析预算情况
+    budget_analysis = ""
+    if budget_usd > 0:
+        avg_tuition = sum([s.get('tuition_usd', 0) for s in school_list]) / len(school_list) if school_list else 0
+        if avg_tuition > 0:
+            if budget_usd >= avg_tuition * 1.1:
+                budget_analysis = f"您的预算（${budget_usd:,}/年）充足，可以覆盖推荐学校的学费，还有一定余裕"
+            elif budget_usd >= avg_tuition * 0.9:
+                budget_analysis = f"您的预算（${budget_usd:,}/年）基本符合推荐学校的学费水平，建议关注奖学金机会"
+            else:
+                budget_analysis = f"您的预算（${budget_usd:,}/年）略低于推荐学校平均学费，建议考虑申请奖学金或调整选校范围"
     
     return f"""
-你是一位经验丰富的澳洲留学顾问，需要为家长生成一段专业且具有紧迫感的专业建议。
+你是一位经验丰富的澳洲留学顾问，需要基于学生的具体资料生成专业的选校建议。
 
-家长填写的学生背景：
-- 学术水平：{academic_band}
-- 专业兴趣方向：{", ".join(interests) if interests else '未提供'}
-- 年度学费预算：${budget_usd:,} USD
-- WIL（带实习项目）需求：{wil_preference}
-- 澳八校（Go8）偏好：{go8_preference}
-- PSW工签重视程度：{psw_importance}
-- 意向城市：{", ".join(city_preferences) if city_preferences else '不限'}
-- 英语准备度：{english_readiness}
+【学生背景分析】
+学术水平：{academic_band} - {academic_analysis}
+专业兴趣：{', '.join(interests) if interests else '未明确'}
+预算情况：${budget_usd:,}/年 - {budget_analysis}
+WIL实习需求：{wil_preference}
+Go8偏好：{go8_preference}
+PSW工签重视度：{psw_importance}
+意向城市：{', '.join(city_preferences) if city_preferences else '不限'}
+英语准备度：{english_readiness}
+主要顾虑：{main_concern if main_concern else '未明确'}
 
-推荐学校：{", ".join(school_names) if school_names else '暂无'}
+【推荐学校详情】
+{chr(10).join(school_info) if school_info else '暂无推荐学校'}
 
-请生成一段专业建议，要求：
+【专业兴趣匹配分析】
+{interest_analysis if interest_analysis else '需要进一步分析专业匹配度'}
 
-1. **总字数控制在400字以内，你是一个专业的澳洲留学中介**
+请生成一段400字以内的专业建议，必须包含：
 
-2. **内容结构**：
-   - 首先分析学生的具体情况和优势（基于学术水平、专业兴趣、预算等）
-   - 针对澳洲大学申请的特点，指出必须准备的内容（英语成绩、材料准备等）
-   - 指出申请过程中的关键挑战和时间紧迫性（澳洲大学通常提前3-6个月申请）
-   - 强调专业指导的重要性，特别是针对澳洲申请流程的复杂性
-   - 引导家长填写详细评估表格获取免费诊断
+1. **学生优势分析**（基于学术水平、专业兴趣、预算等具体数据）：
+   - 明确指出学生的学术竞争力水平
+   - 分析专业兴趣与推荐学校的匹配度
+   - 评估预算与学费的匹配情况
 
-3. **语气要求**：
-   - 专业、可信赖
-   - 带有适度的紧迫感，让家长意识到申请准备需要尽早开始
-   - 强调澳洲留学申请是一个复杂的过程，需要专业机构的帮助
-   - 温和但坚定地引导家长采取行动
+2. **针对澳洲留学的专业建议**：
+   - 基于学生的学术水平，给出具体的选校策略（冲刺/匹配/保底）
+   - 针对专业兴趣，推荐最适合的学校和专业方向
+   - 如果重视WIL/PSW，说明这些因素如何影响选校
+   - 针对英语准备度，给出具体的准备建议
 
-4. **关键信息必须包含**：
-   - 强调澳洲申请准备时间紧迫，需要尽早规划（通常提前3-6个月）
-   - 提到英语成绩准备、申请材料准备、时间规划、策略制定等都需要专业指导
-   - 可以提及澳洲留学的优势（如PSW工签、WIL实习机会等）
-   - 引导填写我们的详细评估表格（Typeform）
-   - 提供30分钟免费诊断服务作为行动号召
+3. **澳洲申请的关键要点**：
+   - 申请时间规划（2月/7月入学的时间节点）
+   - 英语成绩要求（IELTS/TOEFL/PTE）和准备时间
+   - 申请材料准备（成绩单、个人陈述等）
+   - 如果预算紧张，提及奖学金机会
 
-5. **避免**：
-   - 不要过于销售化，保持专业顾问的语调
-   - 不要直接说"联系我们"，而是引导填写表格
-   - 尽量不要超过400字
+4. **行动建议**：
+   - 基于分析结果，给出下一步具体行动建议
+   - 引导填写详细评估表格获取更精准的选校方案
+   - 提供30分钟免费诊断服务
 
-请生成符合以上要求的专业建议。
+要求：
+- 必须基于上述具体数据进行分析，不要泛泛而谈
+- 针对澳洲留学的特点给出专业建议
+- 语气专业、可信赖，带有适度紧迫感
+- 控制在400字以内
+"""
+
+def build_uk_gpt_prompt(input_data: Dict[str, Any], school_list: List[Dict[str, Any]]) -> str:
+    """构建GPT提示词（英国大学）"""
+    if school_list is None:
+        school_list = []
+    
+    # 提取英国大学评估的关键信息
+    academic_band = input_data.get("academic_band", "未提供")
+    interests = input_data.get("interests", [])
+    budget_usd = input_data.get("budget_usd", 0)
+    ucas_route = input_data.get("ucas_route", "常规路线")
+    oxbridge_must_cover = input_data.get("oxbridge_must_cover", False)
+    placement_year_pref = input_data.get("placement_year_pref", "不重要")
+    russell_pref = input_data.get("russell_pref", "没有明确偏好")
+    region_pref = input_data.get("region_pref", "不限")
+    foundation_need = input_data.get("foundation_need", "不需要")
+    prep_level = input_data.get("prep_level", "未准备好")
+    main_concern = input_data.get("main_concern", "")
+    
+    # 分析推荐学校
+    school_info = []
+    for school in school_list[:5]:
+        rank = school.get('rank', 'N/A')
+        name = school.get('name', '')
+        strengths = school.get('strengths', [])
+        tuition = school.get('tuition_usd', 0)
+        is_russell = "Russell Group" in school.get('tags', []) or "罗素集团" in school.get('tags', [])
+        school_info.append(f"{name}（全球排名#{rank}，学费£{int(tuition/1.27):,}/年，{'罗素集团' if is_russell else '非罗素集团'}，优势专业：{', '.join(strengths[:3]) if strengths else '未提供'}）")
+    
+    # 分析学术水平对应的竞争力
+    academic_analysis = ""
+    if "3.9+" in academic_band:
+        academic_analysis = "学术水平非常优秀，具备申请Oxbridge和顶尖罗素集团大学的竞争力"
+    elif "3.8+" in academic_band:
+        academic_analysis = "学术水平优秀，可以申请罗素集团大学和优质英国大学"
+    elif "3.6+" in academic_band:
+        academic_analysis = "学术水平良好，可以申请优质英国大学，部分顶尖大学可能需要Foundation"
+    else:
+        academic_analysis = "学术水平需要进一步提升，建议考虑Foundation预科路径"
+    
+    # 分析专业兴趣匹配度
+    interest_analysis = ""
+    if interests:
+        matched_strengths = []
+        for school in school_list[:3]:
+            school_strengths = school.get('strengths', [])
+            matched = [i for i in interests if any(i.lower() in s.lower() for s in school_strengths)]
+            if matched:
+                matched_strengths.extend(matched)
+        if matched_strengths:
+            interest_analysis = f"您的专业兴趣（{', '.join(interests)}）与推荐学校的优势专业高度匹配"
+        else:
+            interest_analysis = f"您的专业兴趣（{', '.join(interests)}）需要进一步匹配"
+    
+    # 分析预算情况
+    budget_analysis = ""
+    if budget_usd > 0:
+        avg_tuition = sum([s.get('tuition_usd', 0) for s in school_list]) / len(school_list) if school_list else 0
+        if avg_tuition > 0:
+            if budget_usd >= avg_tuition * 1.1:
+                budget_analysis = f"您的预算（${budget_usd:,}/年）充足，可以覆盖推荐学校的学费"
+            elif budget_usd >= avg_tuition * 0.9:
+                budget_analysis = f"您的预算（${budget_usd:,}/年）基本符合推荐学校的学费水平"
+            else:
+                budget_analysis = f"您的预算（${budget_usd:,}/年）略低于推荐学校平均学费，建议考虑奖学金或调整选校范围"
+    
+    return f"""
+你是一位经验丰富的英国留学顾问，需要基于学生的具体资料生成专业的选校建议。
+
+【学生背景分析】
+学术水平：{academic_band} - {academic_analysis}
+专业兴趣：{', '.join(interests) if interests else '未明确'}
+预算情况：${budget_usd:,}/年 - {budget_analysis}
+UCAS路线：{ucas_route}{'（必须覆盖Oxbridge/医学）' if oxbridge_must_cover else ''}
+Placement Year偏好：{placement_year_pref}
+罗素集团偏好：{russell_pref}
+地域偏好：{region_pref}
+Foundation需求：{foundation_need}
+材料准备度：{prep_level}
+主要顾虑：{main_concern if main_concern else '未明确'}
+
+【推荐学校详情】
+{chr(10).join(school_info) if school_info else '暂无推荐学校'}
+
+【专业兴趣匹配分析】
+{interest_analysis if interest_analysis else '需要进一步分析专业匹配度'}
+
+请生成一段400字以内的专业建议，必须包含：
+
+1. **学生优势分析**（基于学术水平、专业兴趣、预算等具体数据）：
+   - 明确指出学生的学术竞争力水平
+   - 分析专业兴趣与推荐学校的匹配度
+   - 评估预算与学费的匹配情况
+   - 评估是否需要Foundation路径
+
+2. **针对英国留学的专业建议**：
+   - 基于学术水平，给出具体的选校策略（Oxbridge/罗素集团/其他优质大学）
+   - 针对UCAS路线，说明申请时间节点和策略
+   - 如果重视Placement Year，说明哪些学校提供此机会
+   - 针对材料准备度，给出具体的准备建议（PS、入学测试等）
+
+3. **英国申请的关键要点**：
+   - UCAS申请时间规划（Oxbridge/医学10月15日，常规1月31日）
+   - Personal Statement的重要性（所有志愿共用一份）
+   - 入学测试要求（如Oxbridge需要STEP、BMAT等）
+   - Foundation路径的选择（如成绩不足）
+
+4. **行动建议**：
+   - 基于分析结果，给出下一步具体行动建议
+   - 引导填写详细评估表格获取更精准的选校方案
+   - 提供30分钟免费诊断服务
+
+要求：
+- 必须基于上述具体数据进行分析，不要泛泛而谈
+- 针对英国留学的特点给出专业建议
+- 语气专业、可信赖，带有适度紧迫感
+- 控制在400字以内
+"""
+
+def build_sg_gpt_prompt(input_data: Dict[str, Any], school_list: List[Dict[str, Any]]) -> str:
+    """构建GPT提示词（新加坡大学）"""
+    if school_list is None:
+        school_list = []
+    
+    # 提取新加坡大学评估的关键信息
+    academic_band = input_data.get("academic_band", "未提供")
+    interests = input_data.get("interests", [])
+    budget_usd = input_data.get("budget_usd", 0)
+    bond_acceptance = input_data.get("bond_acceptance", "不愿意")
+    tg_must = input_data.get("tg_must", False)
+    orientation = input_data.get("orientation", "均衡")
+    interview_portfolio = input_data.get("interview_portfolio", "不愿意")
+    want_double_degree = input_data.get("want_double_degree", False)
+    want_exchange = input_data.get("want_exchange", False)
+    safety_importance = input_data.get("safety_importance", "一般")
+    main_concern = input_data.get("main_concern", "")
+    
+    # 分析推荐学校
+    school_info = []
+    for school in school_list[:5]:
+        rank = school.get('rank', 'N/A')
+        name = school.get('name', '')
+        strengths = school.get('strengths', [])
+        tuition = school.get('tuition_usd', 0)
+        school_info.append(f"{name}（全球排名#{rank}，学费S${int(tuition/0.74):,}/年，优势专业：{', '.join(strengths[:3]) if strengths else '未提供'}）")
+    
+    # 分析学术水平对应的竞争力
+    academic_analysis = ""
+    if "3.9+" in academic_band or "3.8+" in academic_band:
+        academic_analysis = "学术水平优秀，具备申请新加坡顶尖大学（NUS/NTU）的竞争力"
+    elif "3.6+" in academic_band:
+        academic_analysis = "学术水平良好，可以申请新加坡优质大学"
+    else:
+        academic_analysis = "学术水平需要进一步提升，建议考虑其他路径或提升成绩"
+    
+    # 分析专业兴趣匹配度
+    interest_analysis = ""
+    if interests:
+        matched_strengths = []
+        for school in school_list[:3]:
+            school_strengths = school.get('strengths', [])
+            matched = [i for i in interests if any(i.lower() in s.lower() for s in school_strengths)]
+            if matched:
+                matched_strengths.extend(matched)
+        if matched_strengths:
+            interest_analysis = f"您的专业兴趣（{', '.join(interests)}）与推荐学校的优势专业高度匹配"
+        else:
+            interest_analysis = f"您的专业兴趣（{', '.join(interests)}）需要进一步匹配"
+    
+    # 分析预算情况
+    budget_analysis = ""
+    if budget_usd > 0:
+        avg_tuition = sum([s.get('tuition_usd', 0) for s in school_list]) / len(school_list) if school_list else 0
+        if avg_tuition > 0:
+            if budget_usd >= avg_tuition * 1.1:
+                budget_analysis = f"您的预算（${budget_usd:,}/年）充足，可以覆盖推荐学校的学费"
+            elif budget_usd >= avg_tuition * 0.9:
+                budget_analysis = f"您的预算（${budget_usd:,}/年）基本符合推荐学校的学费水平，建议考虑Tuition Grant降低费用"
+            else:
+                budget_analysis = f"您的预算（${budget_usd:,}/年）略低于推荐学校平均学费，强烈建议申请Tuition Grant"
+    
+    return f"""
+你是一位经验丰富的新加坡留学顾问，需要基于学生的具体资料生成专业的选校建议。
+
+【学生背景分析】
+学术水平：{academic_band} - {academic_analysis}
+专业兴趣：{', '.join(interests) if interests else '未明确'}
+预算情况：${budget_usd:,}/年 - {budget_analysis}
+TG/服务期接受度：{bond_acceptance}{'（必须可申请TG）' if tg_must else ''}
+培养导向：{orientation}
+面试/作品集接受度：{interview_portfolio}
+希望双学位：{'是' if want_double_degree else '否'}
+希望交换项目：{'是' if want_exchange else '否'}
+安全重要性：{safety_importance}
+主要顾虑：{main_concern if main_concern else '未明确'}
+
+【推荐学校详情】
+{chr(10).join(school_info) if school_info else '暂无推荐学校'}
+
+【专业兴趣匹配分析】
+{interest_analysis if interest_analysis else '需要进一步分析专业匹配度'}
+
+请生成一段400字以内的专业建议，必须包含：
+
+1. **学生优势分析**（基于学术水平、专业兴趣、预算等具体数据）：
+   - 明确指出学生的学术竞争力水平
+   - 分析专业兴趣与推荐学校的匹配度
+   - 评估预算与学费的匹配情况
+   - 分析TG申请的必要性和可行性
+
+2. **针对新加坡留学的专业建议**：
+   - 基于学术水平，给出具体的选校策略（NUS/NTU/SMU等）
+   - 针对专业兴趣，推荐最适合的学校和专业方向
+   - 如果接受TG，说明如何通过TG降低学费成本
+   - 针对培养导向（产业/研究/均衡），说明选校建议
+   - 如果希望双学位/交换，说明哪些学校提供这些机会
+
+3. **新加坡申请的关键要点**：
+   - 申请时间规划（10-11月开始，次年1-3月截止）
+   - 面试/作品集准备（部分专业需要）
+   - Tuition Grant申请流程和Bond服务期说明
+   - 申请材料准备（成绩单、个人陈述、推荐信等）
+
+4. **行动建议**：
+   - 基于分析结果，给出下一步具体行动建议
+   - 引导填写详细评估表格获取更精准的选校方案
+   - 提供30分钟免费诊断服务
+
+要求：
+- 必须基于上述具体数据进行分析，不要泛泛而谈
+- 针对新加坡留学的特点给出专业建议
+- 语气专业、可信赖，带有适度紧迫感
+- 控制在400字以内
 """
 
 async def generate_parent_evaluation_summary(
@@ -188,6 +471,16 @@ async def generate_parent_evaluation_summary(
         from typing import Dict, Any
         input_dict = input_data.dict() if hasattr(input_data, 'dict') else input_data
         prompt = build_au_gpt_prompt(input_dict, schools)
+    elif country == "United Kingdom":
+        # 英国大学使用专门的提示词构建函数
+        from typing import Dict, Any
+        input_dict = input_data.dict() if hasattr(input_data, 'dict') else input_data
+        prompt = build_uk_gpt_prompt(input_dict, schools)
+    elif country == "Singapore":
+        # 新加坡大学使用专门的提示词构建函数
+        from typing import Dict, Any
+        input_dict = input_data.dict() if hasattr(input_data, 'dict') else input_data
+        prompt = build_sg_gpt_prompt(input_dict, schools)
     else:
         # 其他国家使用原有提示词
         prompt = build_gpt_prompt(input_data, schools)
