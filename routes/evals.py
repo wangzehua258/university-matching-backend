@@ -308,8 +308,11 @@ async def create_parent_evaluation(eval_data: ParentEvaluationCreate):
             # 创建ID到score的映射
             score_map = {s["id"]: s.get("score", 0) for s in top if "id" in s}
             
+            # 限制推荐学校数量为最多5所
+            recommended_schools_limited = recommended_schools[:5]
+            
             schools_with_explanations = []
-            for school in recommended_schools:
+            for school in recommended_schools_limited:
                 school_id = school["id"]
                 school_detail = next((s for s in schools if str(s.get("_id")) == school_id), None)
                 
@@ -368,8 +371,8 @@ async def create_parent_evaluation(eval_data: ParentEvaluationCreate):
                     ]
                 },
                 "keyInfoSummary": {
-                    "budgetRange": budget_range,
-                    "ucasInfo": "主要申请时间：Oxbridge/医学类10/15，常规路线1/31",
+                    "budgetRange": f"推荐学校学费范围：£{min([s.get('tuition', 0) for s in recommended_schools_limited] + [0]):,} - £{max([s.get('tuition', 0) for s in recommended_schools_limited] + [0]):,}/年（USD约${int(min([s.get('tuition', 0) for s in recommended_schools_limited] + [0]) * 1.27):,} - ${int(max([s.get('tuition', 0) for s in recommended_schools_limited] + [0]) * 1.27):,}）" if recommended_schools_limited else "推荐学校学费范围：请查看具体学校信息",
+                    "ucasInfo": "主要申请时间：Oxbridge/医学类10月15日，常规路线1月31日",
                     "foundationInfo": "如成绩不足，可考虑Foundation/国际大一路线",
                     "visaInfo": "毕业后可申请PSW工作签证（本科/硕士2年，博士3年）"
                 },
@@ -549,7 +552,7 @@ async def get_parent_evaluation(eval_id: str):
                     "website": school.get("website", "")
                 })
         elif input_country == "United Kingdom":
-            for school in schools:
+            for school in schools[:5]:  # 限制最多5所
                 recommended_schools.append({
                     "id": str(school.get("_id")),
                     "name": school.get("name", ""),
@@ -689,35 +692,36 @@ async def get_parent_evaluation(eval_id: str):
                 "id": str(evaluation.get("_id")),
                 "user_id": str(evaluation.get("user_id")),
                 "targetCountry": "United Kingdom",
-                "recommendedSchools": schools_with_explanations,
+                "recommendedSchools": schools_with_explanations[:5],  # 限制最多5所
                 "fallbackInfo": fallback_info,
                 "applicationGuidance": {
                     "title": "英国大学申请流程说明",
                     "steps": [
-                    "1. 准备材料：A-Level/IB成绩、个人陈述（PS）、推荐信、入学测试（如Oxbridge/医学类）",
-                    "2. UCAS申请：通过UCAS统一系统提交申请（最多5个志愿）",
-                    "3. 申请时间：Oxbridge/医学类10月15日截止，常规路线1月31日截止",
-                    "4. Foundation路线：如成绩不足，可先读预科或国际大一，再衔接本科",
-                    "5. 等待Offer：收到条件录取或无条件录取",
-                    "6. 选择确认：在UCAS上确认最终选择并满足条件",
-                    "7. 签证申请：收到CAS后申请英国学生签证"
-                ],
-                "keyPoints": [
-                    "UCAS系统：所有英国本科申请必须通过UCAS提交",
-                    "申请费：单次申请费约£22.50（1个志愿）或£27（2-5个志愿）",
-                    "Personal Statement：所有志愿共用一份，需精心准备",
-                    "入学测试：Oxbridge、医学、部分专业需要额外测试（如STEP、BMAT等）",
-                    "Foundation：成绩或科目不足时可考虑预科/国际大一，无需UCAS"
-                ]
-            },
-            "keyInfoSummary": {
-                "budgetRange": budget_range,
-                "ucasInfo": "主要申请时间：Oxbridge/医学类10/15，常规路线1/31",
-                "foundationInfo": "如成绩不足，可考虑Foundation/国际大一路线",
-                "visaInfo": "毕业后可申请PSW工作签证（本科/硕士2年，博士3年）"
-            },
-            "created_at": evaluation.get("created_at")
-                }
+                        "1. 准备材料：A-Level/IB成绩、个人陈述（PS）、推荐信、入学测试（如Oxbridge/医学类）",
+                        "2. UCAS申请：通过UCAS统一系统提交申请（最多5个志愿）",
+                        "3. 申请时间：Oxbridge/医学类10月15日截止，常规路线1月31日截止",
+                        "4. Foundation路线：如成绩不足，可先读预科或国际大一，再衔接本科",
+                        "5. 等待Offer：收到条件录取或无条件录取",
+                        "6. 选择确认：在UCAS上确认最终选择并满足条件",
+                        "7. 签证申请：收到CAS后申请英国学生签证"
+                    ],
+                    "keyPoints": [
+                        "UCAS系统：所有英国本科申请必须通过UCAS提交",
+                        "申请费：单次申请费约£22.50（1个志愿）或£27（2-5个志愿）",
+                        "Personal Statement：所有志愿共用一份，需精心准备",
+                        "入学测试：Oxbridge、医学、部分专业需要额外测试（如STEP、BMAT等）",
+                        "Foundation：成绩或科目不足时可考虑预科/国际大一，无需UCAS"
+                    ]
+                },
+                "keyInfoSummary": {
+                    "budgetRange": budget_range,
+                    "ucasInfo": "主要申请时间：Oxbridge/医学类10月15日，常规路线1月31日",
+                    "foundationInfo": "如成绩不足，可考虑Foundation/国际大一路线",
+                    "visaInfo": "毕业后可申请PSW工作签证（本科/硕士2年，博士3年）"
+                },
+                "gptSummary": evaluation.get("gpt_summary", ""),  # 添加gptSummary字段
+                "created_at": evaluation.get("created_at")
+            }
         elif input_country == "Singapore":
             print("✅ GET接口：进入新加坡专用返回结构分支")
             # 新加坡专用结构：生成解释和申请指导
