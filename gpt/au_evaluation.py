@@ -67,12 +67,31 @@ def _normalize_city(city: str) -> str:
 def _normalize_strengths(strengths: List[str]) -> List[str]:
     """专业名称同义词归一化"""
     synonym_groups = {
-        "cs": ["cs", "computer science", "it", "software", "computing"],
-        "ai": ["ai", "artificial intelligence", "machine learning", "ml"],
-        "engineering": ["engineering", "eng", "tech"],
-        "business": ["business", "commerce", "management", "mba"],
-        "economics": ["economics", "econ", "finance"],
-        "design": ["design", "art", "creative"],
+        "cs": ["cs", "computer science", "it", "software", "computing", "information technology"],
+        "ai": ["ai", "artificial intelligence", "machine learning", "ml", "data science"],
+        "engineering": ["engineering", "eng", "tech", "mechanical", "civil", "electrical", "chemical"],
+        "business": ["business", "commerce", "management", "mba", "marketing", "accounting"],
+        "economics": ["economics", "econ", "finance", "financial"],
+        "design": ["design", "art", "creative", "graphic design", "fashion"],
+        "medicine": ["medicine", "medical", "health", "biomedical"],
+        "law": ["law", "legal", "jurisprudence"],
+        "education": ["education", "teaching", "pedagogy"],
+        "architecture": ["architecture", "architectural", "urban planning"],
+        "nursing": ["nursing", "nurse", "healthcare"],
+        "psychology": ["psychology", "psych", "counseling"],
+        "pharmacy": ["pharmacy", "pharmaceutical"],
+        "veterinary": ["veterinary", "vet", "animal science"],
+        "agriculture": ["agriculture", "agricultural", "agronomy"],
+        "arts": ["arts", "fine arts", "visual arts"],
+        "humanities": ["humanities", "history", "philosophy", "literature"],
+        "natural sciences": ["natural sciences", "biology", "chemistry", "physics", "mathematics"],
+        "public health": ["public health", "epidemiology", "health policy"],
+        "communication": ["communication", "media", "journalism", "public relations"],
+        "film": ["film", "cinema", "film studies", "media production"],
+        "marine science": ["marine science", "oceanography", "marine biology"],
+        "social work": ["social work", "social services"],
+        "tourism": ["tourism", "hospitality", "tourism management"],
+        "sports science": ["sports science", "exercise science", "kinesiology", "sports"],
     }
     normalized = []
     for s in strengths:
@@ -250,6 +269,10 @@ def apply_au_filters_and_score(
     返回: (scored_universities, fallback_info)
     fallback_info 包含: {"applied": bool, "steps": List[str]}
     """
+    # 确保au_docs不为None
+    if au_docs is None:
+        au_docs = []
+    
     # 提取硬过滤参数
     hard_budget = bool(input_data.get("hard_budget_must_within", False))
     budget_usd = int(input_data.get("budget_usd", 0) or 0)
@@ -424,151 +447,160 @@ def generate_school_explanations(school: Dict[str, Any], input_data: Dict[str, A
     
     返回格式：["🎓 学术层级：...", "📚 专业匹配：...", ...]
     """
-    explanations = []
-    
-    # 1. 学术层级匹配
-    academic_band = str(input_data.get("academic_band", "3.6-"))
-    rank = int(school.get("rank", 9999) or 9999)
-    band_map = {"3.9+": "1-60", "3.8+": "1-100", "3.6+": "60-200", "3.6-": "100-300"}
-    target_range = band_map.get(academic_band, "100-300")
-    
-    if rank <= 60:
-        level_desc = "与您的目标层级（Top 60）匹配"
-    elif rank <= 100:
-        level_desc = "接近您的目标层级（Top 100）"
-    elif rank <= 200:
-        level_desc = f"略超您的目标层级（目标{target_range}，该校排名{rank}）"
-    else:
-        level_desc = f"超出目标范围（目标{target_range}，该校排名{rank}）"
-    
-    explanations.append(f"🎓 学术层级：{level_desc}（全球排名 #{rank}）")
-    
-    # 2. 专业匹配
-    interests = _normalize_list(input_data.get("interests", []))
-    strengths = _normalize_list(school.get("strengths", []))
-    matched = []
-    for interest in interests:
-        interest_norm = _normalize_strengths([interest])
-        for strength in strengths:
-            strength_norm = _normalize_strengths([strength])
-            if any(i in s for i in interest_norm for s in strength_norm) or any(s in i for i in interest_norm for s in strength_norm):
-                matched.append(interest)
-                break
-    
-    if matched:
-        explanations.append(f"📚 专业匹配：与您选择的 {len(matched)}/{len(interests) if interests else 1} 个方向匹配（{', '.join(matched[:3])}{'...' if len(matched) > 3 else ''}）")
-    else:
-        explanations.append("📚 专业匹配：部分匹配您选择的专业方向")
-    
-    # 3. 预算匹配
-    budget_usd = int(input_data.get("budget_usd", 0) or 0)
-    tuition_usd = int(school.get("tuition_usd", 0) or 0)
-    hard_budget = bool(input_data.get("hard_budget_must_within", False))
-    
-    if tuition_usd <= budget_usd:
-        budget_desc = f"学费 ${tuition_usd:,}/年，在您的预算范围内"
-    else:
-        over_pct = int((tuition_usd - budget_usd) / budget_usd * 100)
-        if hard_budget:
-            budget_desc = f"学费 ${tuition_usd:,}/年，超出预算约{over_pct}%（需放宽预算限制）"
-        else:
-            budget_desc = f"学费 ${tuition_usd:,}/年，超出预算约{over_pct}%"
-    
-    explanations.append(f"💰 预算：{budget_desc}")
-    
-    # 4. 实习/WIL
-    wil = bool(school.get("work_integrated_learning", False))
-    placement_rate = school.get("placement_rate")
-    wil_pref = str(input_data.get("wil_preference", "不重要"))
-    
-    if wil:
-        if placement_rate:
-            explanations.append(f"🧑‍🏫 实习/WIL：有带实习项目，实习成功率参考：{int(placement_rate * 100)}%")
-        else:
-            explanations.append("🧑‍🏫 实习/WIL：有带实习项目（WIL），提供产业项目/实习机会")
-    else:
-        explanations.append(f"🧑‍🏫 实习/WIL：无明确WIL项目（您选择：{wil_pref}）")
-    
-    # 5. 城市匹配
-    city = str(school.get("city", ""))
-    pref_cities = _normalize_list(input_data.get("city_preferences", []))
-    has_limit = pref_cities and "不限" not in [c.lower() for c in pref_cities]
-    
-    if has_limit:
-        city_norm = _normalize_city(city)
-        pref_norm = [_normalize_city(c) for c in pref_cities]
-        if city_norm in pref_norm:
-            city_desc = f"位于 {city}（与您的偏好：命中）"
-        else:
-            city_desc = f"位于 {city}（与您的偏好：未命中）"
-    else:
-        city_desc = f"位于 {city}（您选择：不限）"
-    
-    explanations.append(f"🏙️ 城市：{city_desc}")
-    
-    # 6. PSW工签
-    psw_years = school.get("post_study_visa_years")
-    psw_importance = str(input_data.get("psw_importance", "一般"))
-    
-    if psw_years:
-        psw_desc = f"毕业工签约 {psw_years} 年"
-        if psw_importance == "非常在意":
-            if psw_years >= 3:
-                psw_desc += "（符合您非常在意的需求）"
-            else:
-                psw_desc += "（略低于理想年限）"
-        explanations.append(f"🛂 PSW：{psw_desc}")
-    else:
-        explanations.append("🛂 PSW：工签年限信息未提供")
-    
-    # 7. 英语要求
-    requires_english = bool(school.get("requires_english_test", False))
-    english_ready = str(input_data.get("english_readiness", ""))
-    accept_language = bool(input_data.get("accept_language_course", True))
-    english_req_text = school.get("english_requirements", "")
-    
-    if requires_english:
-        if english_ready == "已达标":
-            eng_desc = f"学校要求英语成绩；您的准备度：已达标 ✓"
-        elif english_ready == "3个月内可达":
-            eng_desc = f"学校要求英语成绩；您的准备度：3个月内可达"
-        else:
-            if accept_language:
-                eng_desc = f"学校要求英语成绩；您需更长时间，可走'语言/过渡课程'方案 → 已保留但分数偏低"
-            else:
-                eng_desc = f"学校要求英语成绩；您需更长时间且不接受语言班，需尽快准备"
+    try:
+        explanations = []
         
-        if english_req_text:
-            eng_desc += f"（常见要求：{english_req_text}）"
-    else:
-        eng_desc = "学校不要求标化英语成绩 ✓"
-    
-    explanations.append(f"🗣️ 英语：{eng_desc}")
-    
-    # 8. 奖学金
-    has_scholarship = bool(school.get("scholarship_available", False))
-    scholarship_pref = str(input_data.get("scholarship_importance", "不重要"))
-    
-    if has_scholarship:
-        explanations.append(f"🎖️ 奖学金：有（您选择：{scholarship_pref}）")
-    else:
-        if scholarship_pref == "很重要":
-            explanations.append(f"🎖️ 奖学金：无（您选择：{scholarship_pref}，此项未满足）")
+        # 1. 学术层级匹配
+        academic_band = str(input_data.get("academic_band", "3.6-") or "3.6-")
+        rank = int(school.get("rank", 9999) or 9999)
+        band_map = {"3.9+": "1-60", "3.8+": "1-100", "3.6+": "60-200", "3.6-": "100-300"}
+        target_range = band_map.get(academic_band, "100-300")
+        
+        if rank <= 60:
+            level_desc = "与您的目标层级（Top 60）匹配"
+        elif rank <= 100:
+            level_desc = "接近您的目标层级（Top 100）"
+        elif rank <= 200:
+            level_desc = f"略超您的目标层级（目标{target_range}，该校排名{rank}）"
         else:
-            explanations.append(f"🎖️ 奖学金：无")
-    
-    # 9. Go8标识（如果有）
-    if bool(school.get("group_of_eight", False)):
-        explanations.append("⭐ 澳八校（Go8）成员：是 - 澳洲顶级研究型大学联盟成员")
-    
-    # 10. 学制和入学时间
-    study_length = school.get("study_length_years")
-    intakes = school.get("intakes", "")
-    
-    if study_length:
-        explanations.append(f"📅 学制：{study_length} 年")
-    if intakes:
-        explanations.append(f"📅 入学时间：{intakes}")
-    
-    return explanations
+            level_desc = f"超出目标范围（目标{target_range}，该校排名{rank}）"
+        
+        explanations.append(f"🎓 学术层级：{level_desc}（全球排名 #{rank}）")
+        
+        # 2. 专业匹配
+        interests = _normalize_list(input_data.get("interests", []))
+        strengths = _normalize_list(school.get("strengths", []))
+        matched = []
+        for interest in interests:
+            interest_norm = _normalize_strengths([interest])
+            for strength in strengths:
+                strength_norm = _normalize_strengths([strength])
+                if any(i in s for i in interest_norm for s in strength_norm) or any(s in i for i in interest_norm for s in strength_norm):
+                    matched.append(interest)
+                    break
+        
+        if matched:
+            explanations.append(f"📚 专业匹配：与您选择的 {len(matched)}/{len(interests) if interests else 1} 个方向匹配（{', '.join(matched[:3])}{'...' if len(matched) > 3 else ''}）")
+        else:
+            explanations.append("📚 专业匹配：部分匹配您选择的专业方向")
+        
+        # 3. 预算匹配
+        budget_usd = int(input_data.get("budget_usd", 0) or 0)
+        tuition_usd = int(school.get("tuition_usd", 0) or 0)
+        hard_budget = bool(input_data.get("hard_budget_must_within", False))
+        
+        if budget_usd <= 0:
+            budget_desc = f"学费 ${tuition_usd:,}/年（未设置预算）"
+        elif tuition_usd <= budget_usd:
+            budget_desc = f"学费 ${tuition_usd:,}/年，在您的预算范围内"
+        else:
+            over_pct = int((tuition_usd - budget_usd) / budget_usd * 100) if budget_usd > 0 else 0
+            if hard_budget:
+                budget_desc = f"学费 ${tuition_usd:,}/年，超出预算约{over_pct}%（需放宽预算限制）"
+            else:
+                budget_desc = f"学费 ${tuition_usd:,}/年，超出预算约{over_pct}%"
+        
+        explanations.append(f"💰 预算：{budget_desc}")
+        
+        # 4. 实习/WIL
+        wil = bool(school.get("work_integrated_learning", False))
+        placement_rate = school.get("placement_rate")
+        wil_pref = str(input_data.get("wil_preference", "不重要"))
+        
+        if wil:
+            if placement_rate:
+                explanations.append(f"🧑‍🏫 实习/WIL：有带实习项目，实习成功率参考：{int(placement_rate * 100)}%")
+            else:
+                explanations.append("🧑‍🏫 实习/WIL：有带实习项目（WIL），提供产业项目/实习机会")
+        else:
+            explanations.append(f"🧑‍🏫 实习/WIL：无明确WIL项目（您选择：{wil_pref}）")
+        
+        # 5. 城市匹配
+        city = str(school.get("city", ""))
+        pref_cities = _normalize_list(input_data.get("city_preferences", []))
+        has_limit = pref_cities and "不限" not in [c.lower() for c in pref_cities]
+        
+        if has_limit:
+            city_norm = _normalize_city(city)
+            pref_norm = [_normalize_city(c) for c in pref_cities]
+            if city_norm in pref_norm:
+                city_desc = f"位于 {city}（与您的偏好：命中）"
+            else:
+                city_desc = f"位于 {city}（与您的偏好：未命中）"
+        else:
+            city_desc = f"位于 {city}（您选择：不限）"
+        
+        explanations.append(f"🏙️ 城市：{city_desc}")
+        
+        # 6. PSW工签
+        psw_years = school.get("post_study_visa_years")
+        psw_importance = str(input_data.get("psw_importance", "一般"))
+        
+        if psw_years:
+            psw_desc = f"毕业工签约 {psw_years} 年"
+            if psw_importance == "非常在意":
+                if psw_years >= 3:
+                    psw_desc += "（符合您非常在意的需求）"
+                else:
+                    psw_desc += "（略低于理想年限）"
+            explanations.append(f"🛂 PSW：{psw_desc}")
+        else:
+            explanations.append("🛂 PSW：工签年限信息未提供")
+        
+        # 7. 英语要求
+        requires_english = bool(school.get("requires_english_test", False))
+        english_ready = str(input_data.get("english_readiness", ""))
+        accept_language = bool(input_data.get("accept_language_course", True))
+        english_req_text = school.get("english_requirements", "")
+        
+        if requires_english:
+            if english_ready == "已达标":
+                eng_desc = f"学校要求英语成绩；您的准备度：已达标 ✓"
+            elif english_ready == "3个月内可达":
+                eng_desc = f"学校要求英语成绩；您的准备度：3个月内可达"
+            else:
+                if accept_language:
+                    eng_desc = f"学校要求英语成绩；您需更长时间，可走'语言/过渡课程'方案 → 已保留但分数偏低"
+                else:
+                    eng_desc = f"学校要求英语成绩；您需更长时间且不接受语言班，需尽快准备"
+            
+            if english_req_text:
+                eng_desc += f"（常见要求：{english_req_text}）"
+        else:
+            eng_desc = "学校不要求标化英语成绩 ✓"
+        
+        explanations.append(f"🗣️ 英语：{eng_desc}")
+        
+        # 8. 奖学金
+        has_scholarship = bool(school.get("scholarship_available", False))
+        scholarship_pref = str(input_data.get("scholarship_importance", "不重要"))
+        
+        if has_scholarship:
+            explanations.append(f"🎖️ 奖学金：有（您选择：{scholarship_pref}）")
+        else:
+            if scholarship_pref == "很重要":
+                explanations.append(f"🎖️ 奖学金：无（您选择：{scholarship_pref}，此项未满足）")
+            else:
+                explanations.append(f"🎖️ 奖学金：无")
+        
+        # 9. Go8标识（如果有）
+        if bool(school.get("group_of_eight", False)):
+            explanations.append("⭐ 澳八校（Go8）成员：是 - 澳洲顶级研究型大学联盟成员")
+        
+        # 10. 学制和入学时间
+        study_length = school.get("study_length_years")
+        intakes = school.get("intakes", "")
+        
+        if study_length:
+            explanations.append(f"📅 学制：{study_length} 年")
+        if intakes:
+            explanations.append(f"📅 入学时间：{intakes}")
+        
+        return explanations
+    except Exception as e:
+        # 如果生成解释时出错，返回基本错误信息
+        import traceback
+        print(f"生成学校解释时出错: {e}")
+        traceback.print_exc()
+        return [f"⚠️ 生成解释时出错: {str(e)}"]
 

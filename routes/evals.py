@@ -37,17 +37,38 @@ async def create_parent_evaluation(eval_data: ParentEvaluationCreate):
             print("✅ 进入Australia分支 - 开始处理AU评估")
             # 从 AU 集合取原始数据
             au_docs = await db.university_au.find({"country": "Australia"}).to_list(length=None)
+            if au_docs is None:
+                au_docs = []
+            print(f"📊 找到 {len(au_docs)} 所澳洲大学")
             # 打分排序（新版本支持回退策略）
-            scored, fallback_info = apply_au_filters_and_score(eval_data.input.dict(), au_docs, enable_fallback=True)
-            # 取前若干（例如 20）
-            top = scored[:20]
-            recommended_school_ids = [s["id"] for s in top]
-            school_obj_ids = [ObjectId(x) for x in recommended_school_ids]
-            schools = await db.university_au.find({"_id": {"$in": school_obj_ids}}).to_list(length=len(school_obj_ids))
+            try:
+                scored, fallback_info = apply_au_filters_and_score(eval_data.input.dict(), au_docs, enable_fallback=True)
+                print(f"📊 评分后得到 {len(scored)} 所学校")
+            except Exception as e:
+                print(f"⚠️ 评分过程出错: {e}")
+                import traceback
+                traceback.print_exc()
+                raise HTTPException(status_code=500, detail=f"评分过程出错: {str(e)}")
+            # 取前5所
+            top = scored[:5] if scored else []
+            recommended_school_ids = [s["id"] for s in top if "id" in s]
+            if not recommended_school_ids:
+                print("⚠️ 没有推荐学校，使用兜底逻辑")
+                # 兜底：返回排名前5的学校
+                all_au = await db.university_au.find({"country": "Australia"}).to_list(length=None)
+                if all_au:
+                    sorted_by_rank = sorted(all_au, key=lambda x: int(x.get("rank", 9999) or 9999))
+                    schools = sorted_by_rank[:5]
+                    recommended_school_ids = [str(s.get("_id")) for s in schools]
+                else:
+                    schools = []
+            else:
+                school_obj_ids = [ObjectId(x) for x in recommended_school_ids]
+                schools = await db.university_au.find({"_id": {"$in": school_obj_ids}}).to_list(length=len(school_obj_ids))
         elif country == "United Kingdom":
             uk_docs = await db.university_uk.find({"country": "United Kingdom"}).to_list(length=None)
             scored, fallback_info = apply_uk_filters_and_score(eval_data.input.dict(), uk_docs, enable_fallback=True)
-            top = scored[:20]
+            top = scored[:5]
             recommended_school_ids = [s["id"] for s in top]
             school_obj_ids = [ObjectId(x) for x in recommended_school_ids]
             schools = await db.university_uk.find({"_id": {"$in": school_obj_ids}}).to_list(length=len(school_obj_ids))
@@ -57,9 +78,9 @@ async def create_parent_evaluation(eval_data: ParentEvaluationCreate):
             print(f"📊 找到 {len(sg_docs)} 所新加坡大学")
             scored, fallback_info = apply_sg_filters_and_score(eval_data.input.dict(), sg_docs, enable_fallback=True)
             print(f"📊 评分后得到 {len(scored)} 所学校，fallback_applied: {fallback_info.get('applied', False) if fallback_info else False}")
-            top = scored[:20]
+            top = scored[:5]
             recommended_school_ids = [s["id"] for s in top]
-            print(f"📊 推荐学校IDs: {recommended_school_ids[:5]}...")
+            print(f"📊 推荐学校IDs: {recommended_school_ids}")
             school_obj_ids = [ObjectId(x) for x in recommended_school_ids]
             schools = await db.university_sg.find({"_id": {"$in": school_obj_ids}}).to_list(length=len(school_obj_ids))
             print(f"📊 从数据库获取到 {len(schools)} 所学校详情")
@@ -70,9 +91,23 @@ async def create_parent_evaluation(eval_data: ParentEvaluationCreate):
             schools = await db.universities.find({"_id": {"$in": school_ids}}).to_list(length=len(school_ids))
         
         # 生成学生画像、申请策略和专业建议
-        student_profile = generate_student_profile(eval_data.input)
-        strategy_text = generate_application_strategy(eval_data.input, len(recommended_school_ids))
-        gpt_summary = await generate_parent_evaluation_summary(eval_data.input, recommended_school_ids)
+        try:
+            student_profile = generate_student_profile(eval_data.input)
+        except Exception as e:
+            print(f"⚠️ 生成学生画像时出错: {e}")
+            student_profile = {"type": "", "description": ""}
+        
+        try:
+            strategy_text = generate_application_strategy(eval_data.input, len(recommended_school_ids))
+        except Exception as e:
+            print(f"⚠️ 生成申请策略时出错: {e}")
+            strategy_text = ""
+        
+        try:
+            gpt_summary = await generate_parent_evaluation_summary(eval_data.input, recommended_school_ids)
+        except Exception as e:
+            print(f"⚠️ 生成GPT总结时出错: {e}")
+            gpt_summary = ""
         
         # 创建评估记录
         evaluation = ParentEvaluation(
@@ -202,18 +237,31 @@ async def create_parent_evaluation(eval_data: ParentEvaluationCreate):
             # 创建ID到score的映射
             score_map = {s["id"]: s.get("score", 0) for s in top if "id" in s}
             
+            # 限制推荐学校数量为最多5所
+            recommended_schools_limited = recommended_schools[:5]
+            
             schools_with_explanations = []
-            for school in recommended_schools:
+            for school in recommended_schools_limited:
                 school_id = school["id"]
                 school_detail = next((s for s in schools if str(s.get("_id")) == school_id), None)
                 
                 if school_detail:
-                    explanation = generate_school_explanations(school_detail, input_dict)
-                    schools_with_explanations.append({
-                        **school,
-                        "explanation": explanation,
-                        "matchScore": score_map.get(school_id, 0),
-                    })
+                    try:
+                        explanation = generate_school_explanations(school_detail, input_dict)
+                        schools_with_explanations.append({
+                            **school,
+                            "explanation": explanation,
+                            "matchScore": score_map.get(school_id, 0),
+                        })
+                    except Exception as e:
+                        print(f"生成AU学校解释时出错: {e}")
+                        import traceback
+                        traceback.print_exc()
+                        schools_with_explanations.append({
+                            **school,
+                            "explanation": [],
+                            "matchScore": score_map.get(school_id, 0),
+                        })
                 else:
                     schools_with_explanations.append({
                         **school,
@@ -225,7 +273,7 @@ async def create_parent_evaluation(eval_data: ParentEvaluationCreate):
                 "id": str(evaluation.id),
                 "user_id": str(evaluation.user_id),
                 "targetCountry": "Australia",
-                "recommendedSchools": schools_with_explanations,
+                "recommendedSchools": schools_with_explanations,  # 已经是前5所了
                 "fallbackInfo": fallback_info if fallback_info else {"applied": False, "steps": []},
                 "applicationGuidance": {
                     "title": "澳洲大学申请流程说明",
@@ -240,12 +288,11 @@ async def create_parent_evaluation(eval_data: ParentEvaluationCreate):
                     "keyPoints": [
                         "申请时间灵活：通常提前3-6个月即可，部分热门专业需更早",
                         "英语成绩：大部分学校接受多种英语考试，可后补（部分专业除外）",
-                        "申请费：多数学校申请免费或费用较低（约50-100澳元）",
-                        "代理申请：可通过学校授权代理免费申请，获得专业指导"
+                        "申请费：多数学校申请免费或费用较低（约50-100澳元）"
                     ]
                 },
                 "keyInfoSummary": {
-                    "budgetRange": f"推荐学校学费范围：${min([s.get('tuition', 0) for s in recommended_schools] + [0]):,} - ${max([s.get('tuition', 0) for s in recommended_schools] + [0]):,}/年（USD）" if recommended_schools else "推荐学校学费范围：请查看具体学校信息",
+                    "budgetRange": f"推荐学校学费范围：${min([s.get('tuition', 0) for s in recommended_schools_limited] + [0]):,} - ${max([s.get('tuition', 0) for s in recommended_schools_limited] + [0]):,}/年（USD）" if recommended_schools_limited else "推荐学校学费范围：请查看具体学校信息",
                     "englishRequirement": "大部分学校要求IELTS 6.5（单项不低于6.0）或同等水平",
                     "intakeTiming": "主要入学时间：2月和7月",
                     "pswInfo": "毕业后可获得2-4年PSW工作签证（取决于学习时长和地区）"
@@ -467,18 +514,18 @@ async def get_parent_evaluation(eval_id: str):
             else:
                 schools = await db.universities.find({"_id": {"$in": school_ids}}).to_list(length=len(school_ids))
     
-        # 兜底逻辑：如果查询结果为空（无论是school_ids为空还是查询无结果），对于AU至少返回排名前10的学校
+        # 兜底逻辑：如果查询结果为空（无论是school_ids为空还是查询无结果），对于AU至少返回排名前5的学校
         if not schools and input_country == "Australia":
-            print(f"⚠️ GET接口：评估ID {eval_id} 的推荐学校为空，执行兜底逻辑（返回排名前10的AU学校）")
+            print(f"⚠️ GET接口：评估ID {eval_id} 的推荐学校为空，执行兜底逻辑（返回排名前5的AU学校）")
             all_au = await db.university_au.find({"country": "Australia"}).to_list(length=None)
             if all_au:
                 sorted_by_rank = sorted(all_au, key=lambda x: int(x.get("rank", 9999) or 9999))
-                schools = sorted_by_rank[:10]
+                schools = sorted_by_rank[:5]
 
-        # 映射为前端结构
+        # 映射为前端结构（限制最多5所）
         recommended_schools = []
         if input_country == "Australia":
-            for school in schools:
+            for school in schools[:5]:  # 限制最多5所
                 recommended_schools.append({
                     "id": str(school.get("_id")),
                     "name": school.get("name", ""),
@@ -825,32 +872,32 @@ async def get_parent_evaluation(eval_id: str):
                 "id": str(evaluation.get("_id")),
                 "user_id": str(evaluation.get("user_id")),
                 "targetCountry": "Australia",
-                "recommendedSchools": schools_with_explanations,
+                "recommendedSchools": schools_with_explanations[:5],  # 限制最多5所
                 "fallbackInfo": fallback_info,
                 "applicationGuidance": {
                     "title": "澳洲大学申请流程说明",
                     "steps": [
-                    "1. 准备材料：高中成绩单、英语成绩（IELTS/TOEFL/PTE）、个人陈述（部分学校需要）",
-                    "2. 选择入学时间：多数学校提供2月和7月入学，部分提供3个学期",
-                    "3. 直接申请：通过学校官网或授权代理申请（无需统一系统）",
-                    "4. 语言班选项：如英语未达标，可申请语言/过渡课程，通过后进入正课",
-                    "5. 接受Offer：收到录取后按要求缴纳押金并办理学生签证",
-                    "6. 签证申请：准备资金证明、体检等材料，申请澳洲学生签证"
-                ],
-                "keyPoints": [
-                    "申请时间灵活：通常提前3-6个月即可，部分热门专业需更早",
-                    "英语成绩：大部分学校接受多种英语考试，可后补（部分专业除外）",
-                    "申请费：多数学校申请免费或费用较低（约50-100澳元）",
-                    "代理申请：可通过学校授权代理免费申请，获得专业指导"
-                ]
-            },
-            "keyInfoSummary": {
-                "budgetRange": budget_range,
-                "englishRequirement": "大部分学校要求IELTS 6.5（单项不低于6.0）或同等水平",
-                "intakeTiming": "主要入学时间：2月和7月",
-                "pswInfo": "毕业后可获得2-4年PSW工作签证（取决于学习时长和地区）"
-            },
-            "created_at": evaluation.get("created_at")
+                        "1. 准备材料：高中成绩单、英语成绩（IELTS/TOEFL/PTE）、个人陈述（部分学校需要）",
+                        "2. 选择入学时间：多数学校提供2月和7月入学，部分提供3个学期",
+                        "3. 直接申请：通过学校官网或授权代理申请（无需统一系统）",
+                        "4. 语言班选项：如英语未达标，可申请语言/过渡课程，通过后进入正课",
+                        "5. 接受Offer：收到录取后按要求缴纳押金并办理学生签证",
+                        "6. 签证申请：准备资金证明、体检等材料，申请澳洲学生签证"
+                    ],
+                    "keyPoints": [
+                        "申请时间灵活：通常提前3-6个月即可，部分热门专业需更早",
+                        "英语成绩：大部分学校接受多种英语考试，可后补（部分专业除外）",
+                        "申请费：多数学校申请免费或费用较低（约50-100澳元）"
+                    ]
+                },
+                "keyInfoSummary": {
+                    "budgetRange": budget_range,
+                    "englishRequirement": "大部分学校要求IELTS 6.5（单项不低于6.0）或同等水平",
+                    "intakeTiming": "主要入学时间：2月和7月",
+                    "pswInfo": "毕业后可获得2-4年PSW工作签证（取决于学习时长和地区）"
+                },
+                "gptSummary": evaluation.get("gpt_summary", ""),  # 添加gptSummary字段
+                "created_at": evaluation.get("created_at")
             }
         else:
             # 其他国家（USA）返回原有结构，需要分类ED/EA/RD
