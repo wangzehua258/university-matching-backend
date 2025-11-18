@@ -388,8 +388,11 @@ async def create_parent_evaluation(eval_data: ParentEvaluationCreate):
             # 创建ID到score的映射
             score_map = {s["id"]: s.get("score", 0) for s in top if "id" in s}
             
+            # 限制推荐学校数量为最多5所
+            recommended_schools_limited = recommended_schools[:5]
+            
             schools_with_explanations = []
-            for school in recommended_schools:
+            for school in recommended_schools_limited:
                 school_id = school["id"]
                 school_detail = next((s for s in schools if str(s.get("_id")) == school_id), None)
                 
@@ -415,7 +418,7 @@ async def create_parent_evaluation(eval_data: ParentEvaluationCreate):
                     })
             
             # 计算预算范围
-            tuition_values = [s.get("tuition", 0) for s in recommended_schools if s.get("tuition", 0) > 0]
+            tuition_values = [s.get("tuition", 0) for s in recommended_schools_limited if s.get("tuition", 0) > 0]
             budget_range = ""
             if tuition_values:
                 budget_range = f"推荐学校学费范围：S${min(tuition_values):,} - S${max(tuition_values):,}/年（USD约${int(min(tuition_values) * 0.74):,} - ${int(max(tuition_values) * 0.74):,}）"
@@ -426,7 +429,7 @@ async def create_parent_evaluation(eval_data: ParentEvaluationCreate):
                 "id": str(evaluation.id),
                 "user_id": str(evaluation.user_id),
                 "targetCountry": "Singapore",
-                "recommendedSchools": schools_with_explanations,
+                "recommendedSchools": schools_with_explanations,  # 已经是前5所了
                 "fallbackInfo": fallback_info if fallback_info else {"applied": False, "steps": []},
                 "applicationGuidance": {
                     "title": "新加坡大学申请流程说明",
@@ -576,7 +579,7 @@ async def get_parent_evaluation(eval_id: str):
                     "website": school.get("website", "")
                 })
         elif input_country == "Singapore":
-            for school in schools:
+            for school in schools[:5]:  # 限制最多5所
                 recommended_schools.append({
                     "id": str(school.get("_id")),
                     "name": school.get("name", ""),
@@ -787,7 +790,7 @@ async def get_parent_evaluation(eval_id: str):
                 "id": str(evaluation.get("_id")),
                 "user_id": str(evaluation.get("user_id")),
                 "targetCountry": "Singapore",
-                "recommendedSchools": schools_with_explanations,
+                "recommendedSchools": schools_with_explanations[:5],  # 限制最多5所
                 "fallbackInfo": fallback_info,
                 "applicationGuidance": {
                     "title": "新加坡大学申请流程说明",
@@ -815,6 +818,7 @@ async def get_parent_evaluation(eval_id: str):
                     "applicationTiming": "主要申请时间：10-11月开始，次年1-3月截止",
                     "visaInfo": "学生准证有效期通常覆盖整个学习期间，毕业后可申请工作准证"
                 },
+                "gptSummary": evaluation.get("gpt_summary", ""),  # 添加gptSummary字段
                 "created_at": evaluation.get("created_at")
             }
         elif input_country == "Australia":
