@@ -128,9 +128,8 @@ def build_au_gpt_prompt(input_data: Dict[str, Any], school_list: List[Dict[str, 
    - 时间紧迫性：强调申请窗口有限（2月/7月入学），现在不行动可能错过最佳申请时机
    - 情感共鸣：填写表格是孩子留学成功的重要起点
    - 行动号召：立即填写详细评估表格，获得专属留学方案
-   - **必须包含Typeform链接**：https://bjcn4oqknuy.typeform.com/to/XZPDqGoN
 
-总字数：严格控制在500字。前350字专业分析，后150字吸引填写表格。语气专业可信，最后150字要有说服力，能吸引家长立即行动。必须在结尾包含Typeform链接。不要添加任何额外内容，不要超过500字。
+总字数：严格控制在500字。前350字专业分析，后150字吸引填写表格。语气专业可信，最后150字要有说服力，能吸引家长立即行动。不要添加任何额外内容，不要超过500字。
 """
 
 def build_uk_gpt_prompt(input_data: Dict[str, Any], school_list: List[Dict[str, Any]]) -> str:
