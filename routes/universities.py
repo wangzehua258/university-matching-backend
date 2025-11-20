@@ -363,21 +363,22 @@ async def get_universities_paginated(
                 {"name": {"$regex": search, "$options": "i"}},
                 {"strengths": {"$regex": search, "$options": "i"}}
             ]
-            # International collections handling
-            if country in INTERNATIONAL_COUNTRIES:
-                intl_results, total = await _query_international(country, page, page_size, filter_conditions)
-                total_pages = (total + page_size - 1) // page_size
-                has_next = page < total_pages
-                has_prev = page > 1
-                return PaginatedUniversityResponse(
-                    universities=[UniversityResponse(**r) for r in intl_results],
-                    total=total,
-                    page=page,
-                    page_size=page_size,
-                    total_pages=total_pages,
-                    has_next=has_next,
-                    has_prev=has_prev
-                )
+        
+        # International collections handling (must be checked before querying db.universities)
+        if country in INTERNATIONAL_COUNTRIES:
+            intl_results, total = await _query_international(country, page, page_size, filter_conditions)
+            total_pages = (total + page_size - 1) // page_size
+            has_next = page < total_pages
+            has_prev = page > 1
+            return PaginatedUniversityResponse(
+                universities=[UniversityResponse(**r) for r in intl_results],
+                total=total,
+                page=page,
+                page_size=page_size,
+                total_pages=total_pages,
+                has_next=has_next,
+                has_prev=has_prev
+            )
         
         # 获取总数
         try:
