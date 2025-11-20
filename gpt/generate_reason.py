@@ -68,7 +68,7 @@ def build_gpt_prompt(input_data: ParentEvaluationInput, school_list: List[Dict[s
 4. **关键信息必须包含**：
    - 强调申请准备时间紧迫，需要尽早规划
    - 提到申请材料准备、时间规划、策略制定等都需要专业指导
-   - 引导填写我们的详细评估表格（Typeform）
+   - 引导填写我们的详细评估表格
    - 提供30分钟免费诊断服务作为行动号召
 
 5. **避免**：
